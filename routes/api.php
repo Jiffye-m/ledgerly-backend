@@ -6,12 +6,19 @@ use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\ReceiptController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\SaleController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
+
+// Public — protected by the signature itself, not auth. Used for
+// WhatsApp/email receipt links a customer can open without logging in.
+Route::get('/receipts/{sale}/view', [ReceiptController::class, 'publicView'])
+    ->name('receipts.public')
+    ->middleware('signed');
 
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/me', [AuthController::class, 'me']);
@@ -30,6 +37,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
         Route::apiResource('sales', SaleController::class)->only(['index', 'store', 'show']);
         Route::post('/sales/{sale}/void', [SaleController::class, 'void']);
+
+        Route::get('/sales/{sale}/receipt/pdf', [ReceiptController::class, 'download']);
+        Route::post('/sales/{sale}/receipt/email', [ReceiptController::class, 'email']);
+        Route::post('/sales/{sale}/receipt/whatsapp', [ReceiptController::class, 'whatsapp']);
 
         Route::get('/reports/dashboard', [ReportController::class, 'dashboard']);
         Route::get('/reports/daily', [ReportController::class, 'daily']);
