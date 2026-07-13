@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BusinessController;
+use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\ProductController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/register', [AuthController::class, 'register']);
@@ -15,5 +17,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/business', [BusinessController::class, 'show']);
     Route::put('/business', [BusinessController::class, 'update']);
 
-    // Next: products, categories, customers, sales, expenses, reports
+    // Everything below requires a business to already exist
+    Route::middleware('has.business')->group(function () {
+        Route::apiResource('categories', CategoryController::class);
+        Route::apiResource('products', ProductController::class);
+
+        // Next: customers, sales, expenses, reports
+    });
 });
