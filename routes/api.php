@@ -3,7 +3,9 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BusinessController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\SaleController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/register', [AuthController::class, 'register']);
@@ -21,7 +23,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('has.business')->group(function () {
         Route::apiResource('categories', CategoryController::class);
         Route::apiResource('products', ProductController::class);
+        Route::apiResource('customers', CustomerController::class);
 
-        // Next: customers, sales, expenses, reports
+        Route::apiResource('sales', SaleController::class)->only(['index', 'store', 'show']);
+        Route::post('/sales/{sale}/void', [SaleController::class, 'void']);
+
+        // Next: expenses, reports
     });
 });
