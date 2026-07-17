@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Business\StoreBusinessRequest;
 use App\Http\Requests\Business\UpdateBusinessRequest;
+use App\Http\Requests\Settings\UpdateSettingsRequest;
 use App\Http\Resources\BusinessResource;
 use App\Models\Business;
 use App\Models\Setting;
@@ -81,6 +82,27 @@ class BusinessController extends Controller
 
         return response()->json([
             'business' => new BusinessResource($business->load('setting')),
+        ]);
+    }
+
+    /**
+     * Receipt footer, tax rate, and notification toggles — separate from
+     * updating the business's own name/address, since these are the
+     * "how the business operates" knobs rather than identity fields.
+     */
+    public function updateSettings(UpdateSettingsRequest $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if (! $user->isOwner()) {
+            return response()->json(['message' => 'Only the business owner can update this.'], 403);
+        }
+
+        $setting = $user->business->setting;
+        $setting->update($request->validated());
+
+        return response()->json([
+            'business' => new BusinessResource($user->business->fresh('setting')),
         ]);
     }
 
