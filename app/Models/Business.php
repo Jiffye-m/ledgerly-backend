@@ -58,6 +58,16 @@ class Business extends Model
         return $this->hasMany(Expense::class);
     }
 
+    public function inventoryLogs(): HasMany
+    {
+        return $this->hasMany(InventoryLog::class);
+    }
+
+    public function draftSales(): HasMany
+    {
+        return $this->hasMany(DraftSale::class);
+    }
+
     public function setting(): HasOne
     {
         return $this->hasOne(Setting::class);

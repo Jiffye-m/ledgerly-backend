@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Product\StoreProductRequest;
 use App\Http\Requests\Product\UpdateProductRequest;
 use App\Http\Resources\ProductResource;
+use App\Models\InventoryLog;
 use App\Models\Product;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -48,12 +49,44 @@ class ProductController extends Controller
         ]);
     }
 
+    /**
+     * GET /products/barcode/{barcode} — exact match, used by the POS
+     * barcode scanner. Registered before the apiResource show route so it
+     * takes priority over the numeric {product} pattern.
+     */
+    public function findByBarcode(Request $request, string $barcode): JsonResponse
+    {
+        $product = Product::with('category')
+            ->where('business_id', $request->user()->business_id)
+            ->where('barcode', $barcode)
+            ->first();
+
+        if (! $product) {
+            return response()->json(['message' => 'No product found with that barcode.'], 404);
+        }
+
+        return response()->json(['product' => new ProductResource($product)]);
+    }
+
     public function store(StoreProductRequest $request): JsonResponse
     {
         $product = Product::create([
             ...$request->validated(),
             'business_id' => $request->user()->business_id,
         ]);
+
+        if ($product->quantity > 0) {
+            InventoryLog::create([
+                'business_id' => $product->business_id,
+                'product_id' => $product->id,
+                'product_name' => $product->name,
+                'type' => 'adjustment',
+                'quantity_change' => $product->quantity,
+                'quantity_after' => $product->quantity,
+                'user_id' => $request->user()->id,
+                'note' => 'Initial stock on product creation',
+            ]);
+        }
 
         return response()->json([
             'product' => new ProductResource($product->load('category')),
@@ -69,11 +102,30 @@ class ProductController extends Controller
         ]);
     }
 
+    /**
+     * If the quantity field changes here (a direct edit, not a sale), it's
+     * logged as an 'adjustment' so the inventory history stays complete —
+     * otherwise stock could silently jump with no record of why.
+     */
     public function update(UpdateProductRequest $request, Product $product): JsonResponse
     {
         $this->authorizeBusiness($product);
 
+        $before = $product->quantity;
         $product->update($request->validated());
+
+        if ($product->wasChanged('quantity') && $product->quantity !== $before) {
+            InventoryLog::create([
+                'business_id' => $product->business_id,
+                'product_id' => $product->id,
+                'product_name' => $product->name,
+                'type' => 'adjustment',
+                'quantity_change' => $product->quantity - $before,
+                'quantity_after' => $product->quantity,
+                'user_id' => $request->user()->id,
+                'note' => 'Manual edit via product form',
+            ]);
+        }
 
         return response()->json([
             'product' => new ProductResource($product->load('category')),

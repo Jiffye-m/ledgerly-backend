@@ -48,6 +48,11 @@ class Product extends Model
         return $this->hasMany(SaleItem::class);
     }
 
+    public function inventoryLogs(): HasMany
+    {
+        return $this->hasMany(InventoryLog::class);
+    }
+
     public function isLowStock(): bool
     {
         return $this->quantity <= $this->low_stock_threshold;

@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Sale\StoreSaleRequest;
 use App\Http\Resources\SaleResource;
 use App\Models\Customer;
+use App\Models\InventoryLog;
 use App\Models\Product;
 use App\Models\Sale;
 use App\Models\SaleItem;
@@ -54,9 +55,9 @@ class SaleController extends Controller
 
     /**
      * The core POS transaction: validates stock, decrements it, snapshots
-     * price/name into sale_items, and updates the customer's running total
-     * — all inside one DB transaction so a mid-way failure never leaves
-     * stock decremented without a matching sale record, or vice versa.
+     * price/name into sale_items, logs each stock movement, and updates
+     * the customer's running total — all inside one DB transaction so a
+     * mid-way failure never leaves any of that half-done.
      */
     public function store(StoreSaleRequest $request): JsonResponse
     {
@@ -126,6 +127,17 @@ class SaleController extends Controller
                 ]);
 
                 $line['product']->decrement('quantity', $line['quantity']);
+
+                InventoryLog::create([
+                    'business_id' => $businessId,
+                    'product_id' => $line['product']->id,
+                    'product_name' => $line['product']->name,
+                    'type' => 'sale',
+                    'quantity_change' => -$line['quantity'],
+                    'quantity_after' => $line['product']->quantity,
+                    'user_id' => $request->user()->id,
+                    'sale_id' => $sale->id,
+                ]);
             }
 
             if ($request->customer_id) {
@@ -150,11 +162,12 @@ class SaleController extends Controller
     }
 
     /**
-     * Void a sale: restocks every item and reverses the customer's total.
-     * Sales are never hard-deleted — voiding preserves the audit trail
-     * (invoice number, who made it, when) which matters for reconciliation.
+     * Void a sale: restocks every item, logs the restock, and reverses the
+     * customer's total. Sales are never hard-deleted — voiding preserves
+     * the audit trail (invoice number, who made it, when) which matters
+     * for reconciliation.
      */
-    public function void(Sale $sale): JsonResponse
+    public function void(Request $request, Sale $sale): JsonResponse
     {
         $this->authorizeBusiness($sale);
 
@@ -162,11 +175,29 @@ class SaleController extends Controller
             return response()->json(['message' => 'Only completed sales can be voided.'], 422);
         }
 
-        DB::transaction(function () use ($sale) {
+        DB::transaction(function () use ($sale, $request) {
             foreach ($sale->items as $item) {
-                if ($item->product_id) {
-                    Product::where('id', $item->product_id)->increment('quantity', $item->quantity);
+                if (! $item->product_id) {
+                    continue;
                 }
+
+                $product = Product::where('id', $item->product_id)->lockForUpdate()->first();
+                if (! $product) {
+                    continue;
+                }
+
+                $product->increment('quantity', $item->quantity);
+
+                InventoryLog::create([
+                    'business_id' => $sale->business_id,
+                    'product_id' => $product->id,
+                    'product_name' => $product->name,
+                    'type' => 'void_restock',
+                    'quantity_change' => $item->quantity,
+                    'quantity_after' => $product->quantity,
+                    'user_id' => $request->user()->id,
+                    'sale_id' => $sale->id,
+                ]);
             }
 
             if ($sale->customer_id) {

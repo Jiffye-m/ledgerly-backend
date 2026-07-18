@@ -5,9 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class Sale extends Model
+class DraftSale extends Model
 {
     use HasFactory;
 
@@ -15,25 +14,17 @@ class Sale extends Model
         'business_id',
         'user_id',
         'customer_id',
-        'invoice_number',
-        'subtotal',
+        'items',
         'discount',
         'tax',
-        'total',
-        'amount_paid',
-        'change',
         'payment_method',
-        'status',
-        'notes',
+        'note',
     ];
 
     protected $casts = [
-        'subtotal' => 'decimal:2',
+        'items' => 'array',
         'discount' => 'decimal:2',
         'tax' => 'decimal:2',
-        'total' => 'decimal:2',
-        'amount_paid' => 'decimal:2',
-        'change' => 'decimal:2',
     ];
 
     public function business(): BelongsTo
@@ -49,15 +40,5 @@ class Sale extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
-    }
-
-    public function items(): HasMany
-    {
-        return $this->hasMany(SaleItem::class);
-    }
-
-    public function inventoryLogs(): HasMany
-    {
-        return $this->hasMany(InventoryLog::class);
     }
 }

@@ -4,7 +4,9 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BusinessController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CustomerController;
+use App\Http\Controllers\Api\DraftSaleController;
 use App\Http\Controllers\Api\ExpenseController;
+use App\Http\Controllers\Api\InventoryLogController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ReceiptController;
@@ -47,11 +49,27 @@ Route::middleware('auth:sanctum')->group(function () {
         // Any active team member can view the roster
         Route::get('/team', [TeamController::class, 'index']);
 
+        // Barcode lookup — registered before apiResource so it takes
+        // priority over the /products/{product} pattern
+        Route::get('/products/barcode/{barcode}', [ProductController::class, 'findByBarcode']);
+
         Route::apiResource('categories', CategoryController::class)->except(['destroy']);
         Route::apiResource('products', ProductController::class)->except(['destroy']);
         Route::apiResource('customers', CustomerController::class)->except(['destroy']);
         Route::apiResource('expenses', ExpenseController::class)->except(['destroy']);
         Route::apiResource('sales', SaleController::class)->only(['index', 'store', 'show']);
+
+        // Draft sales — a paused cart, no stock effect, any team member
+        // can save/resume/edit/discard one
+        Route::apiResource('draft-sales', DraftSaleController::class);
+
+        // Inventory log — anyone can view the stock history; only
+        // admin/owner can log manual purchases/returns/adjustments (same
+        // "corrective action" line as delete/void elsewhere in this file)
+        Route::get('/inventory-logs', [InventoryLogController::class, 'index']);
+        Route::middleware('not.staff')->group(function () {
+            Route::post('/inventory-logs', [InventoryLogController::class, 'store']);
+        });
 
         // Staff can create/edit freely, but destructive/reversing actions
         // need an admin or the owner

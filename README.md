@@ -478,3 +478,198 @@ curl -X PUT http://localhost:8000/api/business/settings \
   -H "Authorization: Bearer $OWNER_TOKEN" -H "Content-Type: application/json" \
   -d '{"receipt_footer":"Thank you for shopping with us!","tax_rate":7.5}'
 ```
+
+---
+
+# Setting Up Email & WhatsApp For Real
+
+The code has been ready since Day 5–6 — what's been missing is real
+credentials in `.env`. Here's exactly how to get them.
+
+## Email — fastest path: Gmail SMTP (good for testing, low volume)
+
+1. You need a Google Account with 2-Step Verification turned on
+   (myaccount.google.com → Security → 2-Step Verification).
+2. Once that's on, go to myaccount.google.com → Security → **App Passwords**.
+3. Create one for "Mail" / "Other (custom name)" → name it "Ledgerly".
+   Google gives you a 16-character password — copy it.
+4. In `.env`:
+   ```
+   MAIL_MAILER=smtp
+   MAIL_HOST=smtp.gmail.com
+   MAIL_PORT=587
+   MAIL_USERNAME=youraddress@gmail.com
+   MAIL_PASSWORD=the16characterapppassword
+   MAIL_ENCRYPTION=tls
+   MAIL_FROM_ADDRESS=youraddress@gmail.com
+   MAIL_FROM_NAME="Ledgerly"
+   ```
+5. Restart `php artisan serve`, then test:
+   ```bash
+   curl -X POST http://localhost:8000/api/sales/1/receipt/email \
+     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+     -d '{"email":"your-own-email@gmail.com"}'
+   ```
+
+**Gmail's limit is ~500 emails/day** on a free account — fine for testing
+and even fine for a while at low sales volume, but it's not built for
+production email sending (Google will eventually flag automated mail from
+a personal account). When you outgrow it, move to Brevo:
+
+## Email — for production: Brevo (free tier: 300 emails/day, built for this)
+
+1. Sign up at brevo.com (free, no card required).
+2. Go to **SMTP & API** → **SMTP** tab. Brevo gives you a host, port, login,
+   and a separate SMTP key (not your account password).
+3. `.env`:
+   ```
+   MAIL_MAILER=smtp
+   MAIL_HOST=smtp-relay.brevo.com
+   MAIL_PORT=587
+   MAIL_USERNAME=your-brevo-login@...
+   MAIL_PASSWORD=your-smtp-key
+   MAIL_ENCRYPTION=tls
+   MAIL_FROM_ADDRESS=noreply@yourdomain.com
+   MAIL_FROM_NAME="Ledgerly"
+   ```
+   `MAIL_FROM_ADDRESS` should ideally be on a domain you control (better
+   deliverability than a Gmail address as the "from"), but it'll send with
+   a Gmail from-address too if that's all you have right now.
+
+## WhatsApp — Meta Cloud API (the real thing, needs a bit more setup)
+
+This is genuinely a multi-step process on Meta's side — the code is
+already built to use it the moment you have credentials.
+
+1. Go to **developers.facebook.com** → log in with a Facebook account →
+   **My Apps** → **Create App** → choose **"Business"** as the type.
+2. In your new app's dashboard, find **WhatsApp** in the left sidebar
+   under "Add products" and click **Set up**.
+3. Meta gives you a **test phone number** for free immediately — no
+   business verification needed to start testing. On the WhatsApp → API
+   Setup page, you'll see:
+   - A **temporary access token** (valid ~24 hours — fine for testing,
+     you'll need a permanent one before relying on this for real)
+   - A **Phone number ID** (a long number, not the phone number itself)
+4. Under that same page there's a field to add **recipient test numbers**
+   — add your own WhatsApp number and verify it with the code Meta sends.
+   Meta's test number can only message verified numbers until you go live.
+5. Put both values in `.env`:
+   ```
+   WHATSAPP_TOKEN=the_temporary_or_permanent_token
+   WHATSAPP_PHONE_NUMBER_ID=the_phone_number_id
+   ```
+6. Test:
+   ```bash
+   curl -X POST http://localhost:8000/api/sales/1/receipt/whatsapp \
+     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+     -d '{"phone":"your_verified_test_number"}'
+   ```
+   Response `"sent_via": "api"` means it actually sent. `"sent_via": "link"`
+   means the API call failed silently and you got the wa.me fallback
+   instead — check Meta's dashboard for the specific error (expired token
+   is the most common one during testing).
+
+**For a permanent token** (so this doesn't break every 24 hours): Meta
+Business Settings → System Users → create a system user → generate a
+token for it with `whatsapp_business_messaging` permission, no expiry.
+This step requires your Meta Business Account to exist, which usually
+means some form of business verification — this is the part that takes
+actual days/weeks with Meta, not something to block your launch on.
+
+**Realistic recommendation given your timeline**: ship with the `wa.me`
+fallback link (already working, zero setup) for now. It's not "worse" for
+a small shop — the cashier taps a button, WhatsApp opens with the message
+ready, they hit send themselves. Circle back to the full Cloud API once
+you have paying customers and it's worth the verification wait.
+
+---
+
+# v1.5 — Inventory Log, Draft Sales, Barcode Lookup
+
+## New files
+```
+database/migrations/2024_01_02_000001_create_inventory_logs_table.php
+database/migrations/2024_01_02_000002_create_draft_sales_table.php
+app/Models/InventoryLog.php
+app/Models/DraftSale.php
+app/Models/Product.php          ← updated, +inventoryLogs()
+app/Models/Business.php          ← updated, +inventoryLogs(), +draftSales()
+app/Models/Sale.php              ← updated, +inventoryLogs()
+app/Http/Controllers/Api/InventoryLogController.php
+app/Http/Controllers/Api/DraftSaleController.php
+app/Http/Controllers/Api/ProductController.php   ← updated, logs stock changes + barcode lookup
+app/Http/Controllers/Api/SaleController.php      ← updated, logs sale/void_restock movements
+app/Http/Requests/InventoryLog/StoreInventoryLogRequest.php
+app/Http/Requests/DraftSale/StoreDraftSaleRequest.php
+app/Http/Resources/InventoryLogResource.php
+app/Http/Resources/DraftSaleResource.php
+routes/api.php                   ← overwrite
+```
+
+Run `php artisan migrate` (not `migrate:fresh` — these are additive, no
+need to nuke your existing data).
+
+## 1. Inventory Movement Log
+Every stock change is now recorded automatically — you don't have to do
+anything for these to start appearing:
+- Creating a product with initial stock → logged as `adjustment`
+- Editing a product's quantity directly → logged as `adjustment`
+- A sale → logged as `sale` (negative), linked to the invoice
+- Voiding a sale → logged as `void_restock` (positive), linked to the invoice
+
+Plus a **manual entry** for things the system can't infer on its own —
+stock delivered from a supplier, a customer return handled outside a
+formal void, or correcting a count that didn't match a physical stock-take:
+
+| Method | Endpoint | Who | Purpose |
+|---|---|---|---|
+| GET | /api/inventory-logs?product_id=&type=&per_page= | Anyone | Full history, or one product's history |
+| POST | /api/inventory-logs | Admin/Owner | Manual purchase/return/adjustment |
+
+`type: 'sale'` and `type: 'void_restock'` are **not accepted** from
+`POST /inventory-logs` — those only ever come from `SaleController`
+itself, so nobody can fake a sale-driven stock change through this
+endpoint.
+
+```bash
+# Supplier delivered 20 more units
+curl -X POST http://localhost:8000/api/inventory-logs \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"product_id":1,"type":"purchase","quantity_change":20,"note":"Delivery from Supplier X"}'
+```
+
+## 2. Draft Sales
+A cashier can save an in-progress cart and come back to it — the "I'll
+transfer, hold on" scenario. Deliberately **not** built on the `sales`
+table: a draft has no stock effect and no financial reality until it's
+actually completed through the normal `POST /sales` flow. It's just a
+saved cart (`items` as JSON), so it survives even if you delete a product
+that was in someone's paused cart.
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | /api/draft-sales | List every paused cart in the business (any cashier can resume any draft) |
+| POST | /api/draft-sales | Save a cart |
+| GET/PUT/DELETE | /api/draft-sales/{id} | View / edit / discard |
+
+**Resuming a draft is a frontend job, not a backend endpoint** — load the
+draft's `items` into the POS cart, let the cashier complete the sale
+normally through `POST /sales` (full stock check happens there, since
+stock may have changed since the draft was saved), then
+`DELETE /draft-sales/{id}` to clean up.
+
+## 3. Barcode Lookup
+The `products.barcode` column and search-by-barcode have existed since
+Day 1 — what was missing was a fast, exact-match endpoint for a scanner
+to hit (fuzzy `LIKE` search works but is the wrong tool for "the scanner
+just read this exact code"):
+
+```
+GET /api/products/barcode/{barcode}
+```
+Scoped to the business, 404s cleanly if nothing matches. Registered
+*before* `Route::apiResource('products', ...)` in `routes/api.php` so it
+takes priority over the `/products/{product}` pattern — otherwise Laravel
+would try to look up a product by an ID that happens to be a barcode
+string and 404 for the wrong reason.
