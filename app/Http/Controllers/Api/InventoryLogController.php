@@ -19,7 +19,7 @@ class InventoryLogController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = InventoryLog::with(['user', 'sale'])
+        $query = InventoryLog::with(['user', 'sale', 'supplier'])
             ->where('business_id', $request->user()->business_id);
 
         if ($productId = $request->query('product_id')) {
@@ -69,6 +69,7 @@ class InventoryLogController extends Controller
             return InventoryLog::create([
                 'business_id' => $businessId,
                 'product_id' => $product->id,
+                'supplier_id' => $request->supplier_id,
                 'product_name' => $product->name,
                 'type' => $request->type,
                 'quantity_change' => $request->quantity_change,
@@ -79,7 +80,7 @@ class InventoryLogController extends Controller
         });
 
         return response()->json([
-            'log' => new InventoryLogResource($log->load('user')),
+            'log' => new InventoryLogResource($log->load(['user', 'supplier'])),
         ], 201);
     }
 }

@@ -60,4 +60,9 @@ class Sale extends Model
     {
         return $this->hasMany(InventoryLog::class);
     }
+
+    public function returns(): HasMany
+    {
+        return $this->hasMany(Return_::class, 'sale_id');
+    }
 }

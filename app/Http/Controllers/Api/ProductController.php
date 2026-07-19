@@ -18,7 +18,7 @@ class ProductController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Product::with('category')
+        $query = Product::with(['category', 'supplier'])
             ->where('business_id', $request->user()->business_id);
 
         if ($search = $request->query('search')) {
@@ -56,7 +56,7 @@ class ProductController extends Controller
      */
     public function findByBarcode(Request $request, string $barcode): JsonResponse
     {
-        $product = Product::with('category')
+        $product = Product::with(['category', 'supplier'])
             ->where('business_id', $request->user()->business_id)
             ->where('barcode', $barcode)
             ->first();
@@ -89,7 +89,7 @@ class ProductController extends Controller
         }
 
         return response()->json([
-            'product' => new ProductResource($product->load('category')),
+            'product' => new ProductResource($product->load(['category', 'supplier'])),
         ], 201);
     }
 
@@ -98,7 +98,7 @@ class ProductController extends Controller
         $this->authorizeBusiness($product);
 
         return response()->json([
-            'product' => new ProductResource($product->load('category')),
+            'product' => new ProductResource($product->load(['category', 'supplier'])),
         ]);
     }
 
@@ -128,7 +128,7 @@ class ProductController extends Controller
         }
 
         return response()->json([
-            'product' => new ProductResource($product->load('category')),
+            'product' => new ProductResource($product->load(['category', 'supplier'])),
         ]);
     }
 

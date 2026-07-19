@@ -68,6 +68,16 @@ class Business extends Model
         return $this->hasMany(DraftSale::class);
     }
 
+    public function suppliers(): HasMany
+    {
+        return $this->hasMany(Supplier::class);
+    }
+
+    public function returns(): HasMany
+    {
+        return $this->hasMany(Return_::class, 'business_id');
+    }
+
     public function setting(): HasOne
     {
         return $this->hasOne(Setting::class);

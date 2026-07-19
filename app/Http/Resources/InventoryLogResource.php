@@ -22,6 +22,10 @@ class InventoryLogResource extends JsonResource
                 'name' => $this->user->name,
             ] : null),
             'sale_invoice_number' => $this->whenLoaded('sale', fn () => $this->sale?->invoice_number),
+            'supplier' => $this->whenLoaded('supplier', fn () => $this->supplier ? [
+                'id' => $this->supplier->id,
+                'name' => $this->supplier->name,
+            ] : null),
             'created_at' => $this->created_at,
         ];
     }

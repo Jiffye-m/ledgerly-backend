@@ -21,6 +21,10 @@ class StoreProductRequest extends FormRequest
                 'nullable',
                 Rule::exists('categories', 'id')->where(fn ($q) => $q->where('business_id', $businessId)),
             ],
+            'supplier_id' => [
+                'nullable',
+                Rule::exists('suppliers', 'id')->where(fn ($q) => $q->where('business_id', $businessId)),
+            ],
             'name' => ['required', 'string', 'max:255'],
             'sku' => [
                 'nullable',

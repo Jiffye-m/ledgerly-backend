@@ -11,7 +11,9 @@ use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ReceiptController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\ReturnController;
 use App\Http\Controllers\Api\SaleController;
+use App\Http\Controllers\Api\SupplierController;
 use App\Http\Controllers\Api\TeamController;
 use Illuminate\Support\Facades\Route;
 
@@ -57,6 +59,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::apiResource('products', ProductController::class)->except(['destroy']);
         Route::apiResource('customers', CustomerController::class)->except(['destroy']);
         Route::apiResource('expenses', ExpenseController::class)->except(['destroy']);
+        Route::apiResource('suppliers', SupplierController::class)->except(['destroy']);
         Route::apiResource('sales', SaleController::class)->only(['index', 'store', 'show']);
 
         // Draft sales — a paused cart, no stock effect, any team member
@@ -67,18 +70,22 @@ Route::middleware('auth:sanctum')->group(function () {
         // admin/owner can log manual purchases/returns/adjustments (same
         // "corrective action" line as delete/void elsewhere in this file)
         Route::get('/inventory-logs', [InventoryLogController::class, 'index']);
-        Route::middleware('not.staff')->group(function () {
-            Route::post('/inventory-logs', [InventoryLogController::class, 'store']);
-        });
+
+        Route::get('/returns', [ReturnController::class, 'index']);
+        Route::get('/returns/{return}', [ReturnController::class, 'show']);
 
         // Staff can create/edit freely, but destructive/reversing actions
-        // need an admin or the owner
+        // — including processing a return, which refunds money and
+        // restocks items — need an admin or the owner
         Route::middleware('not.staff')->group(function () {
             Route::delete('/categories/{category}', [CategoryController::class, 'destroy']);
             Route::delete('/products/{product}', [ProductController::class, 'destroy']);
             Route::delete('/customers/{customer}', [CustomerController::class, 'destroy']);
             Route::delete('/expenses/{expense}', [ExpenseController::class, 'destroy']);
+            Route::delete('/suppliers/{supplier}', [SupplierController::class, 'destroy']);
             Route::post('/sales/{sale}/void', [SaleController::class, 'void']);
+            Route::post('/inventory-logs', [InventoryLogController::class, 'store']);
+            Route::post('/returns', [ReturnController::class, 'store']);
         });
 
         Route::get('/sales/{sale}/receipt/pdf', [ReceiptController::class, 'download']);

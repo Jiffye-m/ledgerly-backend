@@ -19,7 +19,14 @@ class StoreInventoryLogRequest extends FormRequest
                 'required',
                 Rule::exists('products', 'id')->where(fn ($q) => $q->where('business_id', $this->user()->business_id)),
             ],
-            // sale/void_restock are only ever written by SaleController — never accepted from a request
+            'supplier_id' => [
+                'nullable',
+                Rule::exists('suppliers', 'id')->where(fn ($q) => $q->where('business_id', $this->user()->business_id)),
+            ],
+            // sale/void_restock are only ever written by SaleController; formal
+            // customer returns against a specific sale go through
+            // ReturnController instead — this 'return' type is for stock that
+            // came back without a tracked original sale (e.g. from a supplier)
             'type' => ['required', Rule::in(['purchase', 'return', 'adjustment'])],
             'quantity_change' => ['required', 'integer', 'not_in:0'],
             'note' => ['nullable', 'string'],

@@ -673,3 +673,101 @@ Scoped to the business, 404s cleanly if nothing matches. Registered
 takes priority over the `/products/{product}` pattern — otherwise Laravel
 would try to look up a product by an ID that happens to be a barcode
 string and 404 for the wrong reason.
+
+---
+
+# Returns + Supplier Management
+
+## New files
+```
+database/migrations/2024_01_03_000001_create_suppliers_table.php
+database/migrations/2024_01_03_000002_add_supplier_id_to_products_table.php
+database/migrations/2024_01_03_000003_create_returns_table.php
+database/migrations/2024_01_03_000004_create_return_items_table.php
+database/migrations/2024_01_03_000005_add_supplier_and_return_to_inventory_logs_table.php
+app/Models/Supplier.php
+app/Models/Return_.php                      ← named Return_, "Return" is a reserved PHP word
+app/Models/ReturnItem.php
+app/Models/Product.php                       ← updated, +supplier()
+app/Models/InventoryLog.php                  ← updated, +supplier(), +return()
+app/Models/Sale.php                          ← updated, +returns()
+app/Models/Business.php                      ← updated, +suppliers(), +returns()
+app/Http/Controllers/Api/SupplierController.php
+app/Http/Controllers/Api/ReturnController.php
+app/Http/Controllers/Api/ProductController.php    ← updated, supplier eager-loaded
+app/Http/Controllers/Api/InventoryLogController.php ← updated, +supplier_id support
+app/Http/Requests/Supplier/{Store,Update}SupplierRequest.php
+app/Http/Requests/Returns/StoreReturnRequest.php
+app/Http/Resources/SupplierResource.php
+app/Http/Resources/ReturnResource.php
+app/Http/Resources/ReturnItemResource.php
+app/Http/Resources/ProductResource.php       ← updated, +supplier
+app/Http/Resources/InventoryLogResource.php  ← updated, +supplier
+routes/api.php                                ← overwrite
+```
+
+Run `php artisan migrate` — these are additive, no data loss.
+
+## Why the model is `Return_`, not `Return`
+`return` is a reserved keyword in PHP — `class Return extends Model` is a
+parse error. The class is `Return_` (trailing underscore) but the actual
+database table is still plainly `returns` (set via `protected $table` on
+the model), so nothing about routes, JSON responses, or the table name
+looks unusual — this is purely an internal naming workaround.
+
+## Supplier Management
+Straightforward CRUD, same shape as Categories:
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET/POST | /api/suppliers | List / create |
+| GET/PUT | /api/suppliers/{id} | View / update |
+| DELETE | /api/suppliers/{id} | Admin/owner only — products keep existing (`supplier_id` → null) |
+
+Products can now optionally have a `supplier_id`, and a manual `purchase`
+inventory log entry can optionally note which supplier delivered it —
+neither is required, both are there for when you want to start asking
+"who do I buy this from" instead of just "how much do I have."
+
+## Returns — how it actually works
+This is the one genuinely non-trivial piece: **a return never edits the
+original sale.** Your invoice for July 12th still shows exactly what was
+sold that day, even if half of it comes back on July 15th. The return is
+its own record — `return_number` (`RET-000001`, sequential, same pattern
+as invoice numbers), tied to the original `sale_id`, with its own line
+items and its own refund total. This mirrors how a paper business
+actually handles it: an invoice plus a separate credit note, not an
+edited invoice.
+
+| Method | Endpoint | Who | Purpose |
+|---|---|---|---|
+| GET | /api/returns?sale_id=&customer_id= | Anyone | List returns |
+| GET | /api/returns/{id} | Anyone | View one return |
+| POST | /api/returns | Admin/Owner | Process a return |
+
+**What `POST /returns` actually validates:**
+- The sale must belong to your business and be `status: completed` — you
+  can't file a return against a sale that's already been voided (voiding
+  already reversed everything).
+- Each returned line item is checked against **how much of that specific
+  sale_item hasn't already been returned** — so two partial returns on the
+  same original sale can't together exceed what was actually sold. Try to
+  return 3 units of something when only 1 remains un-returned (2 were
+  already returned last week), and it fails with the exact remaining
+  count in the error message.
+- Stock is restocked and logged (`inventory_logs`, type `return`) exactly
+  like a void does, using the same `lockForUpdate()` safety.
+- If the sale had a customer attached, their `total_purchases` is reduced
+  by the refund amount — same reasoning as void.
+
+```bash
+# Return 1 unit of sale_item #5 from sale #12
+curl -X POST http://localhost:8000/api/returns \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"sale_id":12,"items":[{"sale_item_id":5,"quantity":1}],"reason":"Wrong size"}'
+```
+
+**Why returns are admin/owner only, same as void:** processing a return
+refunds money and puts stock back — exactly the "reversing an action that
+already happened" category that staff shouldn't do unsupervised, same
+line drawn for delete and void elsewhere in this file.

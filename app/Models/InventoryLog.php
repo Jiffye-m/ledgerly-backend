@@ -13,12 +13,14 @@ class InventoryLog extends Model
     protected $fillable = [
         'business_id',
         'product_id',
+        'supplier_id',
         'product_name',
         'type',
         'quantity_change',
         'quantity_after',
         'user_id',
         'sale_id',
+        'return_id',
         'note',
     ];
 
@@ -37,6 +39,11 @@ class InventoryLog extends Model
         return $this->belongsTo(Product::class);
     }
 
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class);
+    }
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
@@ -45,5 +52,10 @@ class InventoryLog extends Model
     public function sale(): BelongsTo
     {
         return $this->belongsTo(Sale::class);
+    }
+
+    public function return(): BelongsTo
+    {
+        return $this->belongsTo(Return_::class, 'return_id');
     }
 }
