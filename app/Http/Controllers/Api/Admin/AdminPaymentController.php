@@ -27,7 +27,7 @@ class AdminPaymentController extends Controller
         $payments = $query->latest()->paginate($request->integer('per_page', 30));
 
         return response()->json([
-            'payments' => $payments->through(fn ($p) => [
+            'payments' => $payments->getCollection()->map(fn ($p) => [
                 'id' => $p->id,
                 'business' => ['id' => $p->business->id, 'name' => $p->business->name],
                 'amount' => $p->amount,
@@ -38,7 +38,7 @@ class AdminPaymentController extends Controller
                 'paid_at' => $p->paid_at,
                 'recorded_by' => $p->recordedBy?->name,
                 'notes' => $p->notes,
-            ]),
+            ])->values(),
             'meta' => [
                 'current_page' => $payments->currentPage(),
                 'last_page' => $payments->lastPage(),
