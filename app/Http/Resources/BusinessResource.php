@@ -22,6 +22,7 @@ class BusinessResource extends JsonResource
             'timezone' => $this->timezone,
             'is_active' => $this->is_active,
             'setting' => new SettingResource($this->whenLoaded('setting')),
+            'subscription' => new SubscriptionResource($this->whenLoaded('subscription')),
             'created_at' => $this->created_at,
         ];
     }

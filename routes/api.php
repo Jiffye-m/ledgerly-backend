@@ -1,5 +1,9 @@
 <?php
 
+use App\Http\Controllers\Api\Admin\AdminBusinessController;
+use App\Http\Controllers\Api\Admin\AdminDashboardController;
+use App\Http\Controllers\Api\Admin\AdminPaymentController;
+use App\Http\Controllers\Api\Admin\AdminPlanController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\BusinessController;
 use App\Http\Controllers\Api\CategoryController;
@@ -37,8 +41,32 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/business', [BusinessController::class, 'show']);
     Route::put('/business', [BusinessController::class, 'update']);
 
-    // Everything below requires a business to already exist
-    Route::middleware('has.business')->group(function () {
+    // ── Platform admin (you, running Ledgerly as a SaaS) ──────────────
+    // Entirely separate from any single business — a super admin may not
+    // belong to a business at all. Deliberately sits outside has.business
+    // and subscription.active, since neither concept applies here.
+    Route::middleware('is.super_admin')->prefix('admin')->group(function () {
+        Route::get('/dashboard', [AdminDashboardController::class, 'stats']);
+
+        Route::get('/businesses', [AdminBusinessController::class, 'index']);
+        Route::get('/businesses/{business}', [AdminBusinessController::class, 'show']);
+        Route::post('/businesses/{business}/activate', [AdminBusinessController::class, 'activate']);
+        Route::post('/businesses/{business}/extend-trial', [AdminBusinessController::class, 'extendTrial']);
+        Route::post('/businesses/{business}/suspend', [AdminBusinessController::class, 'suspend']);
+        Route::post('/businesses/{business}/reactivate', [AdminBusinessController::class, 'reactivate']);
+        Route::post('/businesses/{business}/payments', [AdminPaymentController::class, 'store']);
+
+        Route::get('/payments', [AdminPaymentController::class, 'index']);
+
+        Route::get('/plans', [AdminPlanController::class, 'index']);
+        Route::post('/plans', [AdminPlanController::class, 'store']);
+        Route::put('/plans/{plan}', [AdminPlanController::class, 'update']);
+        Route::delete('/plans/{plan}', [AdminPlanController::class, 'destroy']);
+    });
+
+    // ── Tenant side: requires a business AND an active/trialing
+    // subscription. This is the actual product every business uses. ────
+    Route::middleware(['has.business', 'subscription.active'])->group(function () {
 
         // Owner-only: business settings, adding/editing team members
         Route::middleware('is.owner')->group(function () {

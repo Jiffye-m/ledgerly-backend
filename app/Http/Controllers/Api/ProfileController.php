@@ -23,7 +23,7 @@ class ProfileController extends Controller
         $user->update($request->validated());
 
         return response()->json([
-            'user' => new UserResource($user->load('business.setting')),
+            'user' => new UserResource($user->load(['business.setting', 'business.subscription'])),
         ]);
     }
 

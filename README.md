@@ -771,3 +771,307 @@ curl -X POST http://localhost:8000/api/returns \
 refunds money and puts stock back — exactly the "reversing an action that
 already happened" category that staff shouldn't do unsupervised, same
 line drawn for delete and void elsewhere in this file.
+
+---
+
+# SaaS Admin Panel — Trials, Subscriptions, Manual Billing
+
+This is a different kind of feature from everything before it: it's not
+part of the product any business uses — it's **your** internal tool for
+running Ledgerly as a business. Read this whole section before using it;
+it gates whether your customers can get in.
+
+## 1. Register two more middleware aliases
+Add to `bootstrap/app.php`, alongside the three already there:
+```php
+->withMiddleware(function (Middleware $middleware) {
+    $middleware->alias([
+        'has.business' => \App\Http\Middleware\EnsureBusinessExists::class,
+        'is.owner' => \App\Http\Middleware\EnsureIsOwner::class,
+        'not.staff' => \App\Http\Middleware\EnsureNotStaff::class,
+        'is.super_admin' => \App\Http\Middleware\EnsureSuperAdmin::class,
+        'subscription.active' => \App\Http\Middleware\EnsureSubscriptionActive::class,
+    ]);
+})
+```
+Restart `php artisan serve` after saving.
+
+## 2. Run the new migrations + seed some plans
+```bash
+php artisan migrate
+php artisan db:seed --class=PlanSeeder
+```
+This creates three placeholder plans (Starter/Growth/Pro at ₦5,000/₦12,000/₦25,000)
+so the admin panel has something to work with immediately. **Edit these
+prices** — via `PUT /admin/plans/{id}` once the frontend is built, or
+directly in the `plans` table — they're just a starting point, not a
+recommendation.
+
+## 3. Make yourself a super admin
+There's deliberately no public signup for this — it's not something
+customers should ever be able to reach. Register a normal account through
+the regular `/register` flow (or use your existing one), then:
+```bash
+php artisan tinker
+>>> $u = App\Models\User::where('email', 'you@example.com')->first();
+>>> $u->is_super_admin = true;
+>>> $u->save();
+```
+Log out and back in (or hit `/me` again) — your token now passes
+`is.super_admin` on every `/admin/*` route.
+
+## New files
+```
+database/migrations/2024_01_04_000001_add_is_super_admin_to_users_table.php
+database/migrations/2024_01_04_000002_create_plans_table.php
+database/migrations/2024_01_04_000003_create_subscriptions_table.php
+database/migrations/2024_01_04_000004_create_payments_table.php
+database/seeders/PlanSeeder.php
+app/Models/Plan.php
+app/Models/Subscription.php
+app/Models/Payment.php
+app/Models/User.php                          ← updated, +is_super_admin
+app/Models/Business.php                      ← updated, +subscription(), +payments()
+app/Http/Middleware/EnsureSuperAdmin.php
+app/Http/Middleware/EnsureSubscriptionActive.php
+app/Http/Controllers/Api/Admin/AdminDashboardController.php
+app/Http/Controllers/Api/Admin/AdminBusinessController.php
+app/Http/Controllers/Api/Admin/AdminPaymentController.php
+app/Http/Controllers/Api/Admin/AdminPlanController.php
+app/Http/Controllers/Api/BusinessController.php   ← updated, creates a trial subscription on signup
+app/Http/Controllers/Api/AuthController.php       ← updated, eager-loads subscription
+app/Http/Controllers/Api/ProfileController.php    ← updated, eager-loads subscription
+app/Http/Requests/Admin/*.php
+app/Http/Resources/Admin/AdminBusinessResource.php
+app/Http/Resources/Admin/AdminBusinessDetailResource.php
+app/Http/Resources/SubscriptionResource.php
+app/Http/Resources/BusinessResource.php      ← updated, +subscription
+routes/api.php                                ← overwrite
+```
+
+## The core design decision: super admin is not a business role
+`is_super_admin` is a flag on `users`, completely separate from `role`
+(owner/admin/staff). A super admin **doesn't need to belong to any
+business** — `business_id` stays `null` for that account. This matters
+because it means the admin panel genuinely sits above the multi-tenant
+system rather than being "one more permission level" bolted onto it — the
+`/admin/*` routes don't go through `has.business` or
+`subscription.active` at all, since neither concept applies to you
+managing the platform.
+
+## How trials and subscriptions actually work
+
+**On signup:** `POST /business` now automatically creates a `subscriptions`
+row — `status: trialing`, `trial_ends_at` = 14 days out, no plan chosen
+yet. Nothing else to configure; every new business gets this for free.
+
+**What blocks access:** `EnsureSubscriptionActive` runs on every tenant
+route (right after `has.business`). It calls `Subscription::isUsable()`,
+which checks **dates, not just the status string**:
+- `trialing` → usable only if `trial_ends_at` hasn't passed
+- `active` → usable only if `expires_at` hasn't passed
+- `suspended` / `cancelled` / `expired` → never usable
+
+This means a trial correctly locks out the moment it's actually past its
+end date, **even though nothing runs on a schedule to flip the status
+field** — there's no cron job here, and deliberately so: for your first
+10–20 customers, checking a date on each request is enough; you don't
+need a job scheduler for that. If a blocked request comes in, the
+frontend gets a `402 Payment Required` with a clear message and the
+subscription's actual status, so it can show a "your trial ended, here's
+how to pay" screen rather than a confusing generic error.
+
+**How you activate someone (Phase 1 manual flow, matching what you
+described):**
+1. They sign up → automatic 14-day trial, no action from you needed.
+2. They pay you directly (bank transfer, Paystack payment link — however
+   you're currently collecting money, unchanged by any of this).
+3. You go to `POST /admin/businesses/{id}/activate` with a `plan_id` and
+   `duration_days` (e.g., 30 for monthly, 365 for annual) → their
+   subscription becomes `active` with a real `expires_at`.
+4. Optionally, `POST /admin/businesses/{id}/payments` logs the actual
+   payment for your own records (amount, reference, notes) — this can
+   activate the subscription in the same call if you pass `plan_id` and
+   `extend_days`, or you can log the payment and activate separately.
+
+## Full endpoint reference
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | /api/admin/dashboard | Total businesses, MRR, counts by real status, recent signups/payments |
+| GET | /api/admin/businesses?search=&status=&per_page= | List every business, with subscription + usage at a glance |
+| GET | /api/admin/businesses/{id} | Full detail: owner, subscription, usage, payment history |
+| POST | /api/admin/businesses/{id}/activate | `{plan_id, duration_days, payment_provider?}` — mark as paid |
+| POST | /api/admin/businesses/{id}/extend-trial | `{days}` — give someone more trial time |
+| POST | /api/admin/businesses/{id}/suspend | Lock them out immediately (abuse, chargeback, etc.) |
+| POST | /api/admin/businesses/{id}/reactivate | Undo a suspension |
+| POST | /api/admin/businesses/{id}/payments | `{amount, provider_reference?, paid_at?, notes?, plan_id?, extend_days?}` — log a manual payment |
+| GET | /api/admin/payments?business_id=&per_page= | Payment history, across all businesses or filtered |
+| GET/POST/PUT/DELETE | /api/admin/plans | Manage subscription plans |
+
+## Why MRR is calculated the way it is
+`mrr` in `/admin/dashboard` sums `plan.price` for every subscription that
+is currently `active` **and** currently usable (not expired). This treats
+`plan.price` as a flat monthly figure — if you ever sell annual plans at
+a discount, this number will overstate true monthly revenue unless you
+either store a separate monthly-equivalent price or normalize
+`duration_days` into the calculation. Fine for now with three simple
+plans; worth revisiting if pricing gets more complex.
+
+## What's deliberately NOT here (matches the review's own Phase 1/2/3 split)
+- No Paystack integration — `payment_provider` and `provider_reference`
+  fields exist and are ready for it, but every payment right now is you
+  manually recording that money arrived.
+- No automatic renewal reminders or dunning emails.
+- No self-service upgrade/downgrade from the tenant side.
+All of that is explicitly Phase 2/3 territory. Building it now would be
+solving a problem you don't have any paying customers to justify solving
+yet.
+
+---
+
+# Admin Panel (Platform Owner) — Trials, Subscriptions, Manual Billing
+
+This is the layer for **you**, running Ledgerly as a SaaS — not something
+any business owner ever sees. It sits entirely outside the `business_id`
+scoping that governs everything else in this app.
+
+## 1. Register two more middleware aliases
+`bootstrap/app.php` should now have **all five** aliases:
+```php
+->withMiddleware(function (Middleware $middleware) {
+    $middleware->alias([
+        'has.business' => \App\Http\Middleware\EnsureBusinessExists::class,
+        'is.owner' => \App\Http\Middleware\EnsureIsOwner::class,
+        'not.staff' => \App\Http\Middleware\EnsureNotStaff::class,
+        'is.super_admin' => \App\Http\Middleware\EnsureSuperAdmin::class,
+        'subscription.active' => \App\Http\Middleware\EnsureSubscriptionActive::class,
+    ]);
+})
+```
+Restart `php artisan serve` after saving.
+
+## 2. Migrate + seed
+```bash
+php artisan migrate
+php artisan db:seed --class=PlanSeeder
+```
+This creates three starter plans (Starter/Growth/Pro — edit the prices in
+`database/seeders/PlanSeeder.php` to match what you actually want to
+charge; they're placeholders). If your `database/seeders/DatabaseSeeder.php`
+doesn't already call `PlanSeeder::class` in its `run()` method, add it
+there so `php artisan db:seed` picks it up automatically going forward.
+
+## 3. How you become a super admin
+There's deliberately no signup flow for this — it's not something the
+public should ever reach. Register a normal account through the app like
+anyone else, then flip the flag yourself:
+```bash
+php artisan tinker
+>>> $u = App\Models\User::where('email', 'your-email@example.com')->first();
+>>> $u->is_super_admin = true;
+>>> $u->save();
+```
+That account can now hit every `/admin/*` endpoint — with or without a
+business of its own.
+
+## New files
+```
+database/migrations/2024_01_04_000001_add_is_super_admin_to_users_table.php
+database/migrations/2024_01_04_000002_create_plans_table.php
+database/migrations/2024_01_04_000003_create_subscriptions_table.php
+database/migrations/2024_01_04_000004_create_payments_table.php
+app/Models/{Plan,Subscription,Payment}.php
+app/Models/User.php                          ← updated, +is_super_admin
+app/Models/Business.php                      ← updated, +subscription(), +payments()
+app/Http/Middleware/EnsureSuperAdmin.php
+app/Http/Middleware/EnsureSubscriptionActive.php
+app/Http/Controllers/Api/Admin/AdminBusinessController.php
+app/Http/Controllers/Api/Admin/AdminDashboardController.php
+app/Http/Controllers/Api/Admin/AdminPaymentController.php
+app/Http/Controllers/Api/Admin/AdminPlanController.php
+app/Http/Requests/Admin/{ActivateSubscription,ExtendTrial,RecordPayment,SavePlan}Request.php
+app/Http/Resources/Admin/{AdminBusiness,AdminBusinessDetail}Resource.php
+app/Http/Resources/SubscriptionResource.php
+app/Http/Resources/UserResource.php          ← updated, +is_super_admin (frontend needs this to gate the admin UI)
+app/Http/Controllers/Api/BusinessController.php ← updated, creates a 14-day trial subscription automatically
+database/seeders/PlanSeeder.php
+routes/api.php                                ← overwrite
+```
+
+## The core design decision: dates gate access, billing stays manual
+The review that prompted this drew a clear Phase 1/2/3 line, and it's
+worth being precise about where this build actually sits on it:
+
+- **Collecting money is still entirely manual** — no Paystack, no card
+  processing, nothing automated. You get paid however you already get
+  paid (bank transfer, Paystack payment link you send by hand) and then
+  tell the system about it.
+- **Enforcing access is automatic**, and deliberately so. Every tenant
+  route now sits behind `subscription.active`, which checks
+  `Subscription::isUsable()` — a real method that compares `trial_ends_at`
+  /`expires_at` against today, not just a status label someone has to
+  remember to update. A trial that hits day 15 locks out on its own; you
+  don't have to notice and flip a switch.
+
+That's not scope creep on "keep billing manual" — reading dates and
+comparing them isn't billing infrastructure, it's the bare minimum for
+the data you're already storing to mean something. The complex stuff
+(webhooks, retries, card updates, coupons) is still correctly deferred to
+Phase 3.
+
+## What happens when a trial expires
+Every tenant request gets a 402 with a clear body:
+```json
+{
+  "message": "This business's trial or subscription is no longer active. Contact support to continue.",
+  "code": "SUBSCRIPTION_INACTIVE",
+  "status": "trialing"
+}
+```
+The frontend can catch this specific code and show a "your trial has
+ended" screen instead of a generic error — worth wiring that up rather
+than letting it surface as an unhandled failure.
+
+## Admin endpoints
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | /api/admin/dashboard | MRR, subscription counts by state, recent signups/payments |
+| GET | /api/admin/businesses?search=&status=&per_page= | Every business on the platform |
+| GET | /api/admin/businesses/{id} | Full detail: owner, subscription, usage, payment history |
+| POST | /api/admin/businesses/{id}/activate | `{plan_id, duration_days, payment_provider?}` — "they paid, mark it active" |
+| POST | /api/admin/businesses/{id}/extend-trial | `{days}` — give someone more runway |
+| POST | /api/admin/businesses/{id}/suspend | Lock out immediately (abuse, chargeback, whatever) |
+| POST | /api/admin/businesses/{id}/reactivate | Undo a suspension — restores trial or active based on dates already on file |
+| GET | /api/admin/payments?business_id=&per_page= | Every recorded payment, across all businesses |
+| POST | /api/admin/businesses/{id}/payments | Record a manual payment; optionally activates/extends the subscription in the same call via `plan_id`/`extend_days` |
+| GET/POST/PUT/DELETE | /api/admin/plans | Manage what businesses can subscribe to |
+
+## Test the whole lifecycle
+```bash
+ADMIN_TOKEN="..."  # your super-admin token
+
+# See who's on the platform
+curl http://localhost:8000/api/admin/businesses -H "Authorization: Bearer $ADMIN_TOKEN"
+
+# Someone paid — activate them on the Growth plan for 30 days
+curl -X POST http://localhost:8000/api/admin/businesses/1/activate \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"plan_id":2,"duration_days":30,"payment_provider":"manual"}'
+
+# Or: record the payment and activate in the same step
+curl -X POST http://localhost:8000/api/admin/businesses/1/payments \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"amount":12000,"provider_reference":"bank-transfer-july","plan_id":2,"extend_days":30}'
+
+# Someone's asking for more time to decide
+curl -X POST http://localhost:8000/api/admin/businesses/1/extend-trial \
+  -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+  -d '{"days":7}'
+```
+
+## Next
+The admin frontend — a separate section of the same React app (not a new
+project), gated by `user.is_super_admin`, since this is your internal
+tool, not something worth standing up infrastructure for separately.

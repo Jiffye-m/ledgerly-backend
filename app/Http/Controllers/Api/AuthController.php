@@ -55,7 +55,7 @@ class AuthController extends Controller
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
-            'user' => new UserResource($user->load('business.setting')),
+            'user' => new UserResource($user->load(['business.setting', 'business.subscription'])),
             'token' => $token,
         ]);
     }
@@ -63,7 +63,7 @@ class AuthController extends Controller
     public function me(Request $request): JsonResponse
     {
         return response()->json([
-            'user' => new UserResource($request->user()->load('business.setting')),
+            'user' => new UserResource($request->user()->load(['business.setting', 'business.subscription'])),
         ]);
     }
 

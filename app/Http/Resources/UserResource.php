@@ -16,6 +16,7 @@ class UserResource extends JsonResource
             'phone' => $this->phone,
             'role' => $this->role,
             'is_active' => $this->is_active,
+            'is_super_admin' => $this->is_super_admin,
             'business' => new BusinessResource($this->whenLoaded('business')),
             'created_at' => $this->created_at,
         ];

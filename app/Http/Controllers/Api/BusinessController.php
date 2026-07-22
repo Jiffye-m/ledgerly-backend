@@ -9,6 +9,8 @@ use App\Http\Requests\Settings\UpdateSettingsRequest;
 use App\Http\Resources\BusinessResource;
 use App\Models\Business;
 use App\Models\Setting;
+use App\Models\Subscription;
+use Illuminate\Support\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -42,19 +44,30 @@ class BusinessController extends Controller
 
         Setting::create(['business_id' => $business->id]);
 
+        // Every new business starts on a 14-day trial, no plan chosen yet
+        // — they pick/pay for a plan when they actually convert (handled
+        // manually via the admin panel for now).
+        Subscription::create([
+            'business_id' => $business->id,
+            'plan_id' => null,
+            'status' => 'trialing',
+            'starts_at' => Carbon::today(),
+            'trial_ends_at' => Carbon::today()->addDays(14),
+        ]);
+
         $user->update([
             'business_id' => $business->id,
             'role' => 'owner',
         ]);
 
         return response()->json([
-            'business' => new BusinessResource($business->load('setting')),
+            'business' => new BusinessResource($business->load(['setting', 'subscription'])),
         ], 201);
     }
 
     public function show(Request $request): JsonResponse
     {
-        $business = $request->user()->business()->with('setting')->first();
+        $business = $request->user()->business()->with(['setting', 'subscription'])->first();
 
         if (! $business) {
             return response()->json(['message' => 'No business found.'], 404);
@@ -81,7 +94,7 @@ class BusinessController extends Controller
         $business->update($request->validated());
 
         return response()->json([
-            'business' => new BusinessResource($business->load('setting')),
+            'business' => new BusinessResource($business->load(['setting', 'subscription'])),
         ]);
     }
 
@@ -102,7 +115,7 @@ class BusinessController extends Controller
         $setting->update($request->validated());
 
         return response()->json([
-            'business' => new BusinessResource($user->business->fresh('setting')),
+            'business' => new BusinessResource($user->business->fresh(['setting', 'subscription'])),
         ]);
     }
 

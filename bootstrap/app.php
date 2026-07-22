@@ -12,12 +12,14 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        $middleware->alias([
-            'has.business' => \App\Http\Middleware\EnsureBusinessExists::class,
-            'is.owner' => \App\Http\Middleware\EnsureIsOwner::class,
-            'not.staff' => \App\Http\Middleware\EnsureNotStaff::class,
-        ]);
-    })
+    $middleware->alias([
+        'has.business' => \App\Http\Middleware\EnsureBusinessExists::class,
+        'is.owner' => \App\Http\Middleware\EnsureIsOwner::class,
+        'not.staff' => \App\Http\Middleware\EnsureNotStaff::class,
+        'is.super_admin' => \App\Http\Middleware\EnsureSuperAdmin::class,
+        'subscription.active' => \App\Http\Middleware\EnsureSubscriptionActive::class,
+    ]);
+   })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
     })->create();

@@ -82,4 +82,14 @@ class Business extends Model
     {
         return $this->hasOne(Setting::class);
     }
+
+    public function subscription(): HasOne
+    {
+        return $this->hasOne(Subscription::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(Payment::class);
+    }
 }
