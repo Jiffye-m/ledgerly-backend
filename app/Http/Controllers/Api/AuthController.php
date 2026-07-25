@@ -7,6 +7,7 @@ use App\Http\Requests\Auth\LoginRequest;
 use App\Http\Requests\Auth\RegisterRequest;
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Services\OtpService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -14,9 +15,14 @@ use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
+    public function __construct(private OtpService $otpService)
+    {
+    }
+
     /**
-     * Create an account. No business yet — that's a separate step
-     * (POST /api/business) so the wizard can be its own screen.
+     * Create an account. No business yet — that comes after email
+     * verification (POST /api/business is itself gated on it), so the
+     * wizard can be its own screen.
      */
     public function register(RegisterRequest $request): JsonResponse
     {
@@ -28,11 +34,14 @@ class AuthController extends Controller
             'role' => 'owner',
         ]);
 
+        $this->otpService->issue($user);
+
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
             'user' => new UserResource($user),
             'token' => $token,
+            'message' => "We've sent a 6-digit verification code to {$this->otpService->maskEmail($user->email)}.",
         ], 201);
     }
 

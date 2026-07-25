@@ -1075,3 +1075,97 @@ curl -X POST http://localhost:8000/api/admin/businesses/1/extend-trial \
 The admin frontend — a separate section of the same React app (not a new
 project), gated by `user.is_super_admin`, since this is your internal
 tool, not something worth standing up infrastructure for separately.
+
+---
+
+# Email Verification (OTP)
+
+## 1. Register one more middleware alias
+`bootstrap/app.php` now needs **six**:
+```php
+->withMiddleware(function (Middleware $middleware) {
+    $middleware->alias([
+        'has.business' => \App\Http\Middleware\EnsureBusinessExists::class,
+        'is.owner' => \App\Http\Middleware\EnsureIsOwner::class,
+        'not.staff' => \App\Http\Middleware\EnsureNotStaff::class,
+        'is.super_admin' => \App\Http\Middleware\EnsureSuperAdmin::class,
+        'subscription.active' => \App\Http\Middleware\EnsureSubscriptionActive::class,
+        'email.verified' => \App\Http\Middleware\EnsureEmailVerified::class,
+    ]);
+})
+```
+Restart `php artisan serve` after saving.
+
+## 2. Migrate
+```bash
+php artisan migrate
+```
+
+## New files
+```
+database/migrations/2024_01_05_000001_create_email_otps_table.php
+app/Models/EmailOtp.php
+app/Services/OtpService.php
+app/Mail/OtpMail.php
+resources/views/emails/otp.blade.php
+app/Http/Controllers/Api/EmailVerificationController.php
+app/Http/Controllers/Api/AuthController.php    ← updated, sends the first code on register
+app/Http/Middleware/EnsureEmailVerified.php
+app/Http/Requests/Auth/VerifyEmailRequest.php
+app/Http/Resources/UserResource.php            ← updated, +email_verified_at
+routes/api.php                                  ← updated
+```
+
+## The flow, exactly as specified
+```
+Register → account created, token issued, OTP emailed
+   → POST /verify-email (6-digit code)
+   → email_verified_at set
+   → POST /business now allowed (was 403 before this)
+   → normal tenant flow continues
+```
+
+## Endpoints
+
+| Method | Endpoint | Auth | Purpose |
+|---|---|---|---|
+| POST | /api/register | No | Creates the account **and** sends the first OTP in the same request |
+| POST | /api/verify-email | Yes | `{otp}` — 6 digits |
+| POST | /api/resend-otp | Yes | Invalidates the old code, issues and emails a new one |
+| POST | /api/business | Yes | Now returns **403 `EMAIL_NOT_VERIFIED`** if the email isn't verified yet |
+
+## Security, matching every rule from the spec
+- **6 digits**, generated with `random_int()` (cryptographically secure, not `rand()`)
+- **Expires in 10 minutes** — checked via `EmailOtp::isExpired()`, not just trusted client-side
+- **Max 5 attempts** — the 6th submission is rejected before it's even compared, telling the user to request a new code
+- **60-second resend cooldown** — `OtpService::secondsUntilResendAllowed()` checks the previous code's `created_at`, server-side, so it can't be bypassed by refreshing the page
+- **A resend always issues a new code** and deletes the old unverified one — the old code stops working the moment you ask for a new one, it's not still valid alongside it
+- **Never stored in plain text** — `EmailOtp.otp` uses the same `'hashed'` cast the `User` model uses for passwords. Even a full database dump doesn't reveal anyone's active code.
+
+## Why register still returns a token
+The flow diagram treats "Account Created" as a distinct step before verification — which means the user needs to be authenticated to call `/verify-email` and `/resend-otp` (both are `auth:sanctum` routes, not public). Register issuing a token immediately, before verification, is what makes that possible. What it does *not* do is let that token create a business — `/business` is the one route with `email.verified` on it.
+
+## Test it
+```bash
+# Register — check storage/logs/laravel.log or your inbox for the code
+curl -X POST http://localhost:8000/api/register \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Miracle","email":"you@example.com","password":"password123","password_confirmation":"password123"}'
+
+TOKEN="..." # from the response above
+
+# Try creating a business before verifying — should 403
+curl -X POST http://localhost:8000/api/business \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"name":"Test Shop"}'
+
+# Verify with the code from your email
+curl -X POST http://localhost:8000/api/verify-email \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"otp":"482913"}'
+
+# Now it works
+curl -X POST http://localhost:8000/api/business \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"name":"Test Shop"}'
+```

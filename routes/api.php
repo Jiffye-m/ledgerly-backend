@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\BusinessController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DraftSaleController;
+use App\Http\Controllers\Api\EmailVerificationController;
 use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\InventoryLogController;
 use App\Http\Controllers\Api\ProductController;
@@ -37,7 +38,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/profile', [ProfileController::class, 'update']);
     Route::put('/profile/password', [ProfileController::class, 'updatePassword']);
 
-    Route::post('/business', [BusinessController::class, 'store']);
+    Route::post('/verify-email', [EmailVerificationController::class, 'verify']);
+    Route::post('/resend-otp', [EmailVerificationController::class, 'resend']);
+
+    Route::post('/business', [BusinessController::class, 'store'])->middleware('email.verified');
     Route::get('/business', [BusinessController::class, 'show']);
     Route::put('/business', [BusinessController::class, 'update']);
 

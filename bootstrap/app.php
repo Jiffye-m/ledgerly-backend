@@ -18,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
         'not.staff' => \App\Http\Middleware\EnsureNotStaff::class,
         'is.super_admin' => \App\Http\Middleware\EnsureSuperAdmin::class,
         'subscription.active' => \App\Http\Middleware\EnsureSubscriptionActive::class,
+        'email.verified' => \App\Http\Middleware\EnsureEmailVerified::class,
     ]);
    })
     ->withExceptions(function (Exceptions $exceptions): void {
