@@ -84,7 +84,8 @@ class OtpService
         }
 
         $otp->update(['verified_at' => now()]);
-        $user->update(['email_verified_at' => now()]);
+        $user->email_verified_at = now();
+        $user->save();
 
         return ['success' => true, 'message' => 'Email verified.'];
     }

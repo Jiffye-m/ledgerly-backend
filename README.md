@@ -1232,3 +1232,48 @@ before this because a coincidental follow-up `/me` request (triggered by
 the token changing) papered over the bad data a moment later — but that
 was never something to rely on, and email verification doesn't issue a
 new token, so nothing was there to correct it there.
+
+---
+
+# Bug fix: OTP verification silently failing to save `email_verified_at`
+
+## Root cause
+`OtpService::verify()` was calling:
+```php
+$user->update(['email_verified_at' => now()]);
+```
+`email_verified_at` was never listed in `User::$fillable`. By default,
+Laravel doesn't throw an error when `update()`/`fill()` receives a key
+outside `$fillable` — **it silently discards that field** and continues
+as if nothing happened. So the OTP check itself was working correctly
+(the code was validated, the response said "Email verified.", HTTP 200),
+but the actual database write for `email_verified_at` never occurred —
+`->fresh()` afterward genuinely still showed `null`, because the column
+genuinely was still `null`.
+
+This is why it looked so confusing from the outside: no error anywhere,
+a success message, a 200 response — and yet nothing had actually changed.
+
+## The fix
+```php
+$user->email_verified_at = now();
+$user->save();
+```
+Direct property assignment + `save()` bypasses mass-assignment protection
+entirely, which is the right call here — not just a workaround. Adding
+`email_verified_at` to `$fillable` would have "fixed" this too, but that
+field shouldn't be settable via any generic `update($request->validated())`
+call elsewhere (e.g. if a future endpoint ever mass-assigns user fields
+from a request body, you don't want a stray `email_verified_at` key in
+someone's JSON silently marking their own email verified). This fix only
+changes the one trusted code path that's actually allowed to flip it.
+
+## Why the redirect kept failing across two separate bug reports
+This was a *second*, unrelated bug hiding behind the first one. The
+relation-loading bug (previous fix) meant a successful verification's
+response would have shown `business: {id: null, ...}` instead of proper
+`null`. Once that was fixed, the response became correct in shape — but
+still carrying `email_verified_at: null`, because the value was never
+actually persisted in the first place. Both needed fixing for the
+redirect to work: one controlled whether the frontend could *tell*
+verification succeeded, the other controlled whether it actually *had*.
