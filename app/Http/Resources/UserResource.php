@@ -18,7 +18,7 @@ class UserResource extends JsonResource
             'is_active' => $this->is_active,
             'is_super_admin' => $this->is_super_admin,
             'email_verified_at' => $this->email_verified_at,
-            'business' => new BusinessResource($this->whenLoaded('business')),
+            'business' => $this->relationLoaded('business') ? new BusinessResource($this->business) : null,
             'created_at' => $this->created_at,
         ];
     }

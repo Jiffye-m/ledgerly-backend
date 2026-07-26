@@ -23,8 +23,8 @@ class ProductResource extends JsonResource
             'unit' => $this->unit,
             'image' => $this->image,
             'is_active' => $this->is_active,
-            'category' => new CategoryResource($this->whenLoaded('category')),
-            'supplier' => new SupplierResource($this->whenLoaded('supplier')),
+            'category' => $this->relationLoaded('category') ? new CategoryResource($this->category) : null,
+            'supplier' => $this->relationLoaded('supplier') ? new SupplierResource($this->supplier) : null,
             'created_at' => $this->created_at,
         ];
     }

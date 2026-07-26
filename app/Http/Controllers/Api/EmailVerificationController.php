@@ -20,7 +20,10 @@ class EmailVerificationController extends Controller
         $user = $request->user();
 
         if ($user->email_verified_at) {
-            return response()->json(['message' => 'Email already verified.', 'user' => new UserResource($user)]);
+            return response()->json([
+                'message' => 'Email already verified.',
+                'user' => new UserResource($user->load(['business.setting', 'business.subscription'])),
+            ]);
         }
 
         $result = $this->otpService->verify($user, $request->otp);
@@ -31,7 +34,7 @@ class EmailVerificationController extends Controller
 
         return response()->json([
             'message' => $result['message'],
-            'user' => new UserResource($user->fresh()),
+            'user' => new UserResource($user->fresh()->load(['business.setting', 'business.subscription'])),
         ]);
     }
 

@@ -11,7 +11,7 @@ class DraftSaleResource extends JsonResource
     {
         return [
             'id' => $this->id,
-            'customer' => new CustomerResource($this->whenLoaded('customer')),
+            'customer' => $this->relationLoaded('customer') ? new CustomerResource($this->customer) : null,
             'items' => $this->items,
             'discount' => $this->discount,
             'tax' => $this->tax,

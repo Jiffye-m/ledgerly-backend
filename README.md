@@ -1169,3 +1169,66 @@ curl -X POST http://localhost:8000/api/business \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"name":"Test Shop"}'
 ```
+
+---
+
+# Bug fix: unloaded relations serializing as fake objects instead of null
+
+## What was wrong
+Eight resource files had the same subtle mistake:
+```php
+'business' => new BusinessResource($this->whenLoaded('business')),
+```
+`whenLoaded()` returns a special internal placeholder (not `null`) when a
+relation hasn't been eager-loaded. Wrapping that placeholder in another
+Resource doesn't get detected as "missing" the way a raw value would —
+it silently serializes as an object with every field set to `null`, e.g.
+`"business": {"id": null, "name": null, ...}` instead of `"business": null`.
+
+That's a real problem anywhere the frontend does a truthiness check —
+`Boolean(user.business)` is `true` for `{id: null, ...}` just as much as
+for a real business, since **any object is truthy in JavaScript
+regardless of what's inside it.** This specifically broke the
+post-email-verification redirect: `EmailVerificationController::verify`
+returned a user without the `business` relation loaded, so the frontend
+briefly believed a business existed when it didn't, and the routing
+guards got confused about where to send you.
+
+## Where it was happening
+```
+app/Http/Resources/UserResource.php        → business
+app/Http/Resources/BusinessResource.php    → setting, subscription
+app/Http/Resources/ProductResource.php     → category, supplier
+app/Http/Resources/SaleResource.php        → customer
+app/Http/Resources/ReturnResource.php      → customer
+app/Http/Resources/DraftSaleResource.php   → customer
+```
+Plus the two controller-level gaps that triggered it in practice:
+`EmailVerificationController::verify` and `AuthController::register` were
+both missing `->load(['business.setting', 'business.subscription'])`
+before building the response — every other endpoint that returns a
+`UserResource` already had this right, which is exactly why this bug
+went unnoticed until now: it only ever showed up on the one path that
+was inconsistent with the rest.
+
+## The fix, applied everywhere
+```php
+'business' => $this->relationLoaded('business') ? new BusinessResource($this->business) : null,
+```
+`relationLoaded()` is a real Eloquent method that tells you definitively
+whether a relation was fetched, with no MissingValue ambiguity. If it
+wasn't loaded, this now returns a plain `null` — matching exactly what
+the frontend already expected everywhere else. This is a structural fix,
+not a per-controller patch: even if a future endpoint forgets to
+eager-load one of these relations, the response will correctly show
+`null` instead of a fake truthy object.
+
+## Also fixed
+`AuthController::register` and both response paths in
+`EmailVerificationController` now explicitly load
+`business.setting`/`business.subscription`, consistent with `login`,
+`me`, and `ProfileController::update`. Register technically "worked"
+before this because a coincidental follow-up `/me` request (triggered by
+the token changing) papered over the bad data a moment later — but that
+was never something to rely on, and email verification doesn't issue a
+new token, so nothing was there to correct it there.

@@ -21,8 +21,8 @@ class BusinessResource extends JsonResource
             'currency_symbol' => $this->currency_symbol,
             'timezone' => $this->timezone,
             'is_active' => $this->is_active,
-            'setting' => new SettingResource($this->whenLoaded('setting')),
-            'subscription' => new SubscriptionResource($this->whenLoaded('subscription')),
+            'setting' => $this->relationLoaded('setting') ? new SettingResource($this->setting) : null,
+            'subscription' => $this->relationLoaded('subscription') ? new SubscriptionResource($this->subscription) : null,
             'created_at' => $this->created_at,
         ];
     }

@@ -39,7 +39,7 @@ class AuthController extends Controller
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
-            'user' => new UserResource($user),
+            'user' => new UserResource($user->load(['business.setting', 'business.subscription'])),
             'token' => $token,
             'message' => "We've sent a 6-digit verification code to {$this->otpService->maskEmail($user->email)}.",
         ], 201);

@@ -21,7 +21,7 @@ class SaleResource extends JsonResource
             'payment_method' => $this->payment_method,
             'status' => $this->status,
             'notes' => $this->notes,
-            'customer' => new CustomerResource($this->whenLoaded('customer')),
+            'customer' => $this->relationLoaded('customer') ? new CustomerResource($this->customer) : null,
             'cashier' => $this->whenLoaded('user', fn () => [
                 'id' => $this->user->id,
                 'name' => $this->user->name,

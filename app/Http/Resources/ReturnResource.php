@@ -16,7 +16,7 @@ class ReturnResource extends JsonResource
                 'id' => $this->sale->id,
                 'invoice_number' => $this->sale->invoice_number,
             ]),
-            'customer' => new CustomerResource($this->whenLoaded('customer')),
+            'customer' => $this->relationLoaded('customer') ? new CustomerResource($this->customer) : null,
             'total_refund' => $this->total_refund,
             'reason' => $this->reason,
             'items' => ReturnItemResource::collection($this->whenLoaded('items')),
