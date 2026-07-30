@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
@@ -12,6 +13,7 @@ class Business extends Model
     use HasFactory;
 
     protected $fillable = [
+        'owner_user_id',
         'name',
         'slug',
         'email',
@@ -28,9 +30,24 @@ class Business extends Model
         'is_active' => 'boolean',
     ];
 
-    public function users(): HasMany
+    /**
+     * The account that created this business and holds ultimate control
+     * over it (billing, deleting it, appointing admins) — distinct from
+     * `members()`, which includes every admin/staff working in it.
+     */
+    public function owner(): BelongsTo
     {
-        return $this->hasMany(User::class);
+        return $this->belongsTo(User::class, 'owner_user_id');
+    }
+
+    public function members(): HasMany
+    {
+        return $this->hasMany(BusinessMember::class);
+    }
+
+    public function branches(): HasMany
+    {
+        return $this->hasMany(Branch::class);
     }
 
     public function categories(): HasMany

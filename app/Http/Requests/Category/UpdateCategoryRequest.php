@@ -21,7 +21,7 @@ class UpdateCategoryRequest extends FormRequest
                 'string',
                 'max:255',
                 Rule::unique('categories', 'name')
-                    ->where(fn ($query) => $query->where('business_id', $this->user()->business_id))
+                    ->where(fn ($query) => $query->where('business_id', $this->business()->id))
                     ->ignore($this->route('category')),
             ],
             'description' => ['nullable', 'string'],

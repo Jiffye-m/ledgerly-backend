@@ -20,6 +20,10 @@ class ExpenseResource extends JsonResource
                 'id' => $this->user->id,
                 'name' => $this->user->name,
             ]),
+            'branch' => $this->relationLoaded('branch') && $this->branch ? [
+                'id' => $this->branch->id,
+                'name' => $this->branch->name,
+            ] : null,
             'created_at' => $this->created_at,
         ];
     }

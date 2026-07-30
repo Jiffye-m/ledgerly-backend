@@ -14,11 +14,13 @@ class UserResource extends JsonResource
             'name' => $this->name,
             'email' => $this->email,
             'phone' => $this->phone,
-            'role' => $this->role,
             'is_active' => $this->is_active,
             'is_super_admin' => $this->is_super_admin,
             'email_verified_at' => $this->email_verified_at,
-            'business' => $this->relationLoaded('business') ? new BusinessResource($this->business) : null,
+            // No more singular 'business' or 'role' here — a user can
+            // belong to several businesses in different roles now. See
+            // GET /my/businesses for that list, and GET /business for
+            // whichever one is currently selected (X-Business-Id).
             'created_at' => $this->created_at,
         ];
     }

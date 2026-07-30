@@ -15,7 +15,7 @@ class SupplierController extends Controller
     public function index(Request $request): JsonResponse
     {
         $suppliers = Supplier::withCount('products')
-            ->where('business_id', $request->user()->business_id)
+            ->where('business_id', $request->business()->id)
             ->orderBy('name')
             ->get();
 
@@ -28,7 +28,7 @@ class SupplierController extends Controller
     {
         $supplier = Supplier::create([
             ...$request->validated(),
-            'business_id' => $request->user()->business_id,
+            'business_id' => $request->business()->id,
         ]);
 
         return response()->json([

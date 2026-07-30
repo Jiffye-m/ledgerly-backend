@@ -25,7 +25,7 @@ class ReturnController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Return_::with(['sale', 'customer', 'user'])
-            ->where('business_id', $request->user()->business_id);
+            ->where('business_id', $request->business()->id);
 
         if ($saleId = $request->query('sale_id')) {
             $query->where('sale_id', $saleId);
@@ -57,7 +57,7 @@ class ReturnController extends Controller
      */
     public function store(StoreReturnRequest $request): JsonResponse
     {
-        $businessId = $request->user()->business_id;
+        $businessId = $request->business()->id;
 
         $return = DB::transaction(function () use ($request, $businessId) {
             $sale = Sale::where('business_id', $businessId)->findOrFail($request->sale_id);

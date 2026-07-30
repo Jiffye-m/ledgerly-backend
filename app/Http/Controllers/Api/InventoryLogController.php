@@ -20,7 +20,7 @@ class InventoryLogController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = InventoryLog::with(['user', 'sale', 'supplier'])
-            ->where('business_id', $request->user()->business_id);
+            ->where('business_id', $request->business()->id);
 
         if ($productId = $request->query('product_id')) {
             $query->where('product_id', $productId);
@@ -51,7 +51,7 @@ class InventoryLogController extends Controller
      */
     public function store(StoreInventoryLogRequest $request): JsonResponse
     {
-        $businessId = $request->user()->business_id;
+        $businessId = $request->business()->id;
 
         $log = DB::transaction(function () use ($request, $businessId) {
             $product = Product::where('business_id', $businessId)

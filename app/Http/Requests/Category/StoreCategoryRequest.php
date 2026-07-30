@@ -20,7 +20,7 @@ class StoreCategoryRequest extends FormRequest
                 'string',
                 'max:255',
                 Rule::unique('categories', 'name')
-                    ->where(fn ($query) => $query->where('business_id', $this->user()->business_id)),
+                    ->where(fn ($query) => $query->where('business_id', $this->business()->id)),
             ],
             'description' => ['nullable', 'string'],
         ];

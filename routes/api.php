@@ -5,7 +5,9 @@ use App\Http\Controllers\Api\Admin\AdminDashboardController;
 use App\Http\Controllers\Api\Admin\AdminPaymentController;
 use App\Http\Controllers\Api\Admin\AdminPlanController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\BranchController;
 use App\Http\Controllers\Api\BusinessController;
+use App\Http\Controllers\Api\BusinessSwitcherController;
 use App\Http\Controllers\Api\CategoryController;
 use App\Http\Controllers\Api\CustomerController;
 use App\Http\Controllers\Api\DraftSaleController;
@@ -41,9 +43,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/verify-email', [EmailVerificationController::class, 'verify']);
     Route::post('/resend-otp', [EmailVerificationController::class, 'resend']);
 
+    // Every business this user belongs to, in any role — deliberately
+    // outside has.business, since you need this list *before* you can
+    // pick an X-Business-Id to send on everything else.
+    Route::get('/my/businesses', [BusinessSwitcherController::class, 'index']);
+
+    // Creating a business doesn't require one to already be selected —
+    // it's how you get your first one, or an additional one.
     Route::post('/business', [BusinessController::class, 'store'])->middleware('email.verified');
-    Route::get('/business', [BusinessController::class, 'show']);
-    Route::put('/business', [BusinessController::class, 'update']);
 
     // ── Platform admin (you, running Ledgerly as a SaaS) ──────────────
     // Entirely separate from any single business — a super admin may not
@@ -68,19 +75,30 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('/plans/{plan}', [AdminPlanController::class, 'destroy']);
     });
 
-    // ── Tenant side: requires a business AND an active/trialing
-    // subscription. This is the actual product every business uses. ────
+    // ── Tenant side: requires an X-Business-Id header resolved to an
+    // active membership, AND that business's subscription being active.
+    // This is the actual product every business uses. ──────────────────
     Route::middleware(['has.business', 'subscription.active'])->group(function () {
 
-        // Owner-only: business settings, adding/editing team members
+        Route::get('/business', [BusinessController::class, 'show']);
+
+        // Owner-only: business identity/settings, branches, adding/editing
+        // team members
         Route::middleware('is.owner')->group(function () {
+            Route::put('/business', [BusinessController::class, 'update']);
             Route::put('/business/settings', [BusinessController::class, 'updateSettings']);
+
+            Route::post('/branches', [BranchController::class, 'store']);
+            Route::put('/branches/{branch}', [BranchController::class, 'update']);
+
             Route::post('/team', [TeamController::class, 'store']);
             Route::put('/team/{member}', [TeamController::class, 'update']);
             Route::delete('/team/{member}', [TeamController::class, 'destroy']);
         });
 
-        // Any active team member can view the roster
+        // Any active team member can view branches and the team roster
+        Route::get('/branches', [BranchController::class, 'index']);
+        Route::get('/branches/{branch}', [BranchController::class, 'show']);
         Route::get('/team', [TeamController::class, 'index']);
 
         // Barcode lookup — registered before apiResource so it takes

@@ -34,12 +34,12 @@ class AdminDashboardController extends Controller
             }
         }
 
-        $recentBusinesses = Business::with(['subscription.plan', 'users'])
+        $recentBusinesses = Business::with(['subscription.plan', 'owner'])
             ->latest()->take(5)->get()
             ->map(fn ($b) => [
                 'id' => $b->id,
                 'name' => $b->name,
-                'owner_email' => $b->users->firstWhere('role', 'owner')?->email,
+                'owner_email' => $b->owner?->email,
                 'status' => $b->subscription?->status,
                 'created_at' => $b->created_at,
             ]);

@@ -14,7 +14,7 @@ class StoreDraftSaleRequest extends FormRequest
 
     public function rules(): array
     {
-        $businessId = $this->user()->business_id;
+        $businessId = $this->business()->id;
 
         return [
             'customer_id' => [

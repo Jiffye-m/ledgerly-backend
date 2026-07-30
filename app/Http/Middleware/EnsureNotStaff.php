@@ -16,7 +16,7 @@ class EnsureNotStaff
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if ($request->user()->role === 'staff') {
+        if ($request->membership()?->isStaff()) {
             return response()->json([
                 'message' => 'Staff accounts can\'t do this — ask an admin or the owner.',
             ], 403);

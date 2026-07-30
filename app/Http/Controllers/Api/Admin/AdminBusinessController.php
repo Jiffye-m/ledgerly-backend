@@ -19,13 +19,13 @@ class AdminBusinessController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Business::with(['subscription.plan', 'users'])
-            ->withCount(['users', 'products', 'sales']);
+        $query = Business::with(['subscription.plan', 'owner'])
+            ->withCount(['members', 'products', 'sales']);
 
         if ($search = $request->query('search')) {
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
-                    ->orWhereHas('users', fn ($u) => $u->where('email', 'like', "%{$search}%"));
+                    ->orWhereHas('owner', fn ($u) => $u->where('email', 'like', "%{$search}%"));
             });
         }
 
@@ -47,9 +47,9 @@ class AdminBusinessController extends Controller
 
     public function show(Business $business): JsonResponse
     {
-        $business->loadCount(['users', 'products', 'sales'])
+        $business->loadCount(['members', 'products', 'sales'])
             ->loadSum('sales', 'total') // adds sales_sum_total
-            ->load(['subscription.plan', 'users', 'payments' => fn ($q) => $q->latest()->with('recordedBy')]);
+            ->load(['subscription.plan', 'owner', 'payments' => fn ($q) => $q->latest()->with('recordedBy')]);
 
         // Resource expects `sales_total`; map the Eloquent-generated
         // `sales_sum_total` to that friendlier name.
@@ -76,7 +76,7 @@ class AdminBusinessController extends Controller
 
         return response()->json([
             'business' => new AdminBusinessDetailResource(
-                $business->fresh(['subscription.plan', 'users'])->loadCount(['users', 'products', 'sales'])
+                $business->fresh(['subscription.plan', 'owner'])->loadCount(['members', 'products', 'sales'])
             ),
         ]);
     }
@@ -98,7 +98,7 @@ class AdminBusinessController extends Controller
 
         return response()->json([
             'business' => new AdminBusinessDetailResource(
-                $business->fresh(['subscription.plan', 'users'])->loadCount(['users', 'products', 'sales'])
+                $business->fresh(['subscription.plan', 'owner'])->loadCount(['members', 'products', 'sales'])
             ),
         ]);
     }
@@ -128,7 +128,7 @@ class AdminBusinessController extends Controller
 
         return response()->json([
             'business' => new AdminBusinessDetailResource(
-                $business->fresh(['subscription.plan', 'users'])->loadCount(['users', 'products', 'sales'])
+                $business->fresh(['subscription.plan', 'owner'])->loadCount(['members', 'products', 'sales'])
             ),
         ]);
     }

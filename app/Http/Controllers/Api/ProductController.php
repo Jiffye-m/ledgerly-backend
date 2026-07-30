@@ -19,7 +19,7 @@ class ProductController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Product::with(['category', 'supplier'])
-            ->where('business_id', $request->user()->business_id);
+            ->where('business_id', $request->business()->id);
 
         if ($search = $request->query('search')) {
             $query->where(function ($q) use ($search) {
@@ -57,7 +57,7 @@ class ProductController extends Controller
     public function findByBarcode(Request $request, string $barcode): JsonResponse
     {
         $product = Product::with(['category', 'supplier'])
-            ->where('business_id', $request->user()->business_id)
+            ->where('business_id', $request->business()->id)
             ->where('barcode', $barcode)
             ->first();
 
@@ -72,7 +72,7 @@ class ProductController extends Controller
     {
         $product = Product::create([
             ...$request->validated(),
-            'business_id' => $request->user()->business_id,
+            'business_id' => $request->business()->id,
         ]);
 
         if ($product->quantity > 0) {

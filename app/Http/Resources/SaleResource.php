@@ -22,6 +22,10 @@ class SaleResource extends JsonResource
             'status' => $this->status,
             'notes' => $this->notes,
             'customer' => $this->relationLoaded('customer') ? new CustomerResource($this->customer) : null,
+            'branch' => $this->relationLoaded('branch') && $this->branch ? [
+                'id' => $this->branch->id,
+                'name' => $this->branch->name,
+            ] : null,
             'cashier' => $this->whenLoaded('user', fn () => [
                 'id' => $this->user->id,
                 'name' => $this->user->name,

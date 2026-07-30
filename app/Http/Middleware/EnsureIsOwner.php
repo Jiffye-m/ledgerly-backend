@@ -10,7 +10,7 @@ class EnsureIsOwner
 {
     public function handle(Request $request, Closure $next): Response
     {
-        if (! $request->user()->isOwner()) {
+        if (! $request->membership()?->isOwner()) {
             return response()->json([
                 'message' => 'Only the business owner can do this.',
             ], 403);

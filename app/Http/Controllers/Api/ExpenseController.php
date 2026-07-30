@@ -18,8 +18,12 @@ class ExpenseController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Expense::with('user')
-            ->where('business_id', $request->user()->business_id);
+        $query = Expense::with(['user', 'branch'])
+            ->where('business_id', $request->business()->id);
+
+        if ($branchId = $this->requiredBranchId() ?? $request->query('branch_id')) {
+            $query->where('branch_id', $branchId);
+        }
 
         if ($category = $request->query('category')) {
             $query->where('category', $category);
@@ -49,13 +53,14 @@ class ExpenseController extends Controller
     {
         $expense = Expense::create([
             ...$request->validated(),
-            'business_id' => $request->user()->business_id,
+            'business_id' => $request->business()->id,
+            'branch_id' => $this->resolveBranchIdForWrite($request->input('branch_id')),
             'user_id' => $request->user()->id,
             'expense_date' => $request->expense_date ?? Carbon::today(),
         ]);
 
         return response()->json([
-            'expense' => new ExpenseResource($expense->load('user')),
+            'expense' => new ExpenseResource($expense->load(['user', 'branch'])),
         ], 201);
     }
 
@@ -64,7 +69,7 @@ class ExpenseController extends Controller
         $this->authorizeBusiness($expense);
 
         return response()->json([
-            'expense' => new ExpenseResource($expense->load('user')),
+            'expense' => new ExpenseResource($expense->load(['user', 'branch'])),
         ]);
     }
 
@@ -75,7 +80,7 @@ class ExpenseController extends Controller
         $expense->update($request->validated());
 
         return response()->json([
-            'expense' => new ExpenseResource($expense->load('user')),
+            'expense' => new ExpenseResource($expense->load(['user', 'branch'])),
         ]);
     }
 

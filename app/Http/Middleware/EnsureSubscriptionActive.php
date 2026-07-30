@@ -16,7 +16,7 @@ class EnsureSubscriptionActive
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $subscription = $request->user()->business->subscription;
+        $subscription = $request->business()?->subscription;
 
         if (! $subscription || ! $subscription->isUsable()) {
             return response()->json([

@@ -9,7 +9,7 @@ class AdminBusinessResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
-        $owner = $this->users->firstWhere('role', 'owner');
+        $owner = $this->owner;
         $subscription = $this->subscription;
 
         return [
@@ -28,7 +28,7 @@ class AdminBusinessResource extends JsonResource
                 'is_usable' => $subscription->isUsable(),
             ] : null,
             'counts' => [
-                'users' => $this->users_count,
+                'members' => $this->members_count,
                 'products' => $this->products_count,
                 'sales' => $this->sales_count,
             ],

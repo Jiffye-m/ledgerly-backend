@@ -16,7 +16,7 @@ class CategoryController extends Controller
     public function index(Request $request): JsonResponse
     {
         $categories = Category::withCount('products')
-            ->where('business_id', $request->user()->business_id)
+            ->where('business_id', $request->business()->id)
             ->orderBy('name')
             ->get();
 
@@ -28,9 +28,9 @@ class CategoryController extends Controller
     public function store(StoreCategoryRequest $request): JsonResponse
     {
         $category = Category::create([
-            'business_id' => $request->user()->business_id,
+            'business_id' => $request->business()->id,
             'name' => $request->name,
-            'slug' => $this->uniqueSlug($request->name, $request->user()->business_id),
+            'slug' => $this->uniqueSlug($request->name, $request->business()->id),
             'description' => $request->description,
         ]);
 

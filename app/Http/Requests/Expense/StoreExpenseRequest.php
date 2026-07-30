@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Expense;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreExpenseRequest extends FormRequest
 {
@@ -19,6 +20,10 @@ class StoreExpenseRequest extends FormRequest
             'amount' => ['required', 'numeric', 'min:0.01'],
             'description' => ['nullable', 'string'],
             'expense_date' => ['nullable', 'date'],
+            'branch_id' => [
+                'nullable',
+                Rule::exists('branches', 'id')->where(fn ($q) => $q->where('business_id', $this->business()->id)),
+            ],
         ];
     }
 }

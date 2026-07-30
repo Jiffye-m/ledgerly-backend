@@ -14,7 +14,7 @@ class StoreSaleRequest extends FormRequest
 
     public function rules(): array
     {
-        $businessId = $this->user()->business_id;
+        $businessId = $this->business()->id;
 
         return [
             'customer_id' => [
@@ -28,6 +28,10 @@ class StoreSaleRequest extends FormRequest
             ],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'items.*.unit_price' => ['nullable', 'numeric', 'min:0'],
+            'branch_id' => [
+                'nullable',
+                Rule::exists('branches', 'id')->where(fn ($q) => $q->where('business_id', $businessId)),
+            ],
             'discount' => ['nullable', 'numeric', 'min:0'],
             'tax' => ['nullable', 'numeric', 'min:0'],
             'payment_method' => ['required', Rule::in(['cash', 'transfer', 'card', 'pos'])],

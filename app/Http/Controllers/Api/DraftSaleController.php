@@ -18,7 +18,7 @@ class DraftSaleController extends Controller
     public function index(Request $request): JsonResponse
     {
         $drafts = DraftSale::with(['customer', 'user'])
-            ->where('business_id', $request->user()->business_id)
+            ->where('business_id', $request->business()->id)
             ->latest()
             ->get();
 
@@ -30,7 +30,7 @@ class DraftSaleController extends Controller
     public function store(StoreDraftSaleRequest $request): JsonResponse
     {
         $draft = DraftSale::create([
-            'business_id' => $request->user()->business_id,
+            'business_id' => $request->business()->id,
             'user_id' => $request->user()->id,
             'customer_id' => $request->customer_id,
             'items' => $request->items,

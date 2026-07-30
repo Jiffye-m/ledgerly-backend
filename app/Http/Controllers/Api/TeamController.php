@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Team\StoreTeamMemberRequest;
 use App\Http\Requests\Team\UpdateTeamMemberRequest;
 use App\Http\Resources\TeamMemberResource;
+use App\Models\BusinessMember;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -14,9 +15,9 @@ class TeamController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $members = User::where('business_id', $request->user()->business_id)
+        $members = BusinessMember::with(['user', 'branch'])
+            ->where('business_id', $request->business()->id)
             ->orderByRaw("FIELD(role, 'owner', 'admin', 'staff')")
-            ->orderBy('name')
             ->get();
 
         return response()->json([
@@ -24,55 +25,77 @@ class TeamController extends Controller
         ]);
     }
 
+    /**
+     * If the email already belongs to a Ledgerly account (they run their
+     * own separate business, say, or are staff elsewhere), this attaches
+     * that existing account to this business instead of creating a
+     * duplicate — a person is one account across every business they
+     * touch, never several.
+     */
     public function store(StoreTeamMemberRequest $request): JsonResponse
     {
-        $member = User::create([
-            'business_id' => $request->user()->business_id,
-            'name' => $request->name,
-            'email' => $request->email,
-            'phone' => $request->phone,
-            'password' => $request->password, // hashed automatically via the 'hashed' cast
+        $businessId = $request->business()->id;
+
+        $user = User::where('email', $request->email)->first();
+
+        if ($user && BusinessMember::where('business_id', $businessId)->where('user_id', $user->id)->exists()) {
+            return response()->json(['message' => 'This person is already a member of this business.'], 422);
+        }
+
+        if (! $user) {
+            $user = User::create([
+                'name' => $request->name,
+                'email' => $request->email,
+                'phone' => $request->phone,
+                'password' => $request->password, // hashed automatically via the 'hashed' cast
+                'is_active' => true,
+            ]);
+        }
+
+        $member = BusinessMember::create([
+            'business_id' => $businessId,
+            'user_id' => $user->id,
             'role' => $request->role,
-            'is_active' => true,
+            'branch_id' => $request->branch_id,
+            'status' => 'active',
         ]);
 
         return response()->json([
-            'team_member' => new TeamMemberResource($member),
+            'team_member' => new TeamMemberResource($member->load(['user', 'branch'])),
         ], 201);
     }
 
-    public function update(UpdateTeamMemberRequest $request, User $member): JsonResponse
+    public function update(UpdateTeamMemberRequest $request, BusinessMember $member): JsonResponse
     {
         $this->authorizeBusiness($member);
 
-        if ($member->role === 'owner') {
+        if ($member->isOwner()) {
             return response()->json(['message' => 'The owner\'s role can\'t be changed here.'], 403);
         }
 
         $member->update($request->validated());
 
         return response()->json([
-            'team_member' => new TeamMemberResource($member),
+            'team_member' => new TeamMemberResource($member->load(['user', 'branch'])),
         ]);
     }
 
     /**
-     * Deactivates rather than deletes — see the note in EnsureNotStaff /
-     * the migrations: user_id on sales and expenses cascade-deletes, so
-     * removing the row would wipe that person's entire sales history.
-     * Deactivating just blocks login while keeping every record intact.
+     * Deactivates this one membership — not the user account itself,
+     * which may still be active on other businesses they belong to.
+     * Sales/expenses this person logged stay attributed to them; only
+     * their access to *this* business is revoked.
      */
-    public function destroy(User $member): JsonResponse
+    public function destroy(BusinessMember $member): JsonResponse
     {
         $this->authorizeBusiness($member);
 
-        if ($member->role === 'owner') {
+        if ($member->isOwner()) {
             return response()->json(['message' => 'The owner can\'t be removed.'], 403);
         }
 
-        $member->update(['is_active' => false]);
-        $member->tokens()->delete(); // immediately invalidate any active sessions
+        $member->update(['status' => 'deactivated']);
 
-        return response()->json(['message' => 'Team member deactivated.']);
+        return response()->json(['message' => 'Team member removed from this business.']);
     }
 }

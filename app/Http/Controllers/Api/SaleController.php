@@ -22,8 +22,12 @@ class SaleController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Sale::with(['customer', 'user'])
-            ->where('business_id', $request->user()->business_id);
+        $query = Sale::with(['customer', 'user', 'branch'])
+            ->where('business_id', $request->business()->id);
+
+        if ($branchId = $this->requiredBranchId() ?? $request->query('branch_id')) {
+            $query->where('branch_id', $branchId);
+        }
 
         if ($customerId = $request->query('customer_id')) {
             $query->where('customer_id', $customerId);
@@ -61,7 +65,7 @@ class SaleController extends Controller
      */
     public function store(StoreSaleRequest $request): JsonResponse
     {
-        $businessId = $request->user()->business_id;
+        $businessId = $request->business()->id;
 
         $sale = DB::transaction(function () use ($request, $businessId) {
             $subtotal = 0;
@@ -101,6 +105,7 @@ class SaleController extends Controller
 
             $sale = Sale::create([
                 'business_id' => $businessId,
+                'branch_id' => $this->resolveBranchIdForWrite($request->branch_id),
                 'user_id' => $request->user()->id,
                 'customer_id' => $request->customer_id,
                 'invoice_number' => $this->nextInvoiceNumber($businessId),
@@ -148,7 +153,7 @@ class SaleController extends Controller
         });
 
         return response()->json([
-            'sale' => new SaleResource($sale->load(['items', 'customer', 'user'])),
+            'sale' => new SaleResource($sale->load(['items', 'customer', 'user', 'branch'])),
         ], 201);
     }
 
@@ -157,7 +162,7 @@ class SaleController extends Controller
         $this->authorizeBusiness($sale);
 
         return response()->json([
-            'sale' => new SaleResource($sale->load(['items', 'customer', 'user'])),
+            'sale' => new SaleResource($sale->load(['items', 'customer', 'user', 'branch'])),
         ]);
     }
 
@@ -208,7 +213,7 @@ class SaleController extends Controller
         });
 
         return response()->json([
-            'sale' => new SaleResource($sale->fresh()->load(['items', 'customer', 'user'])),
+            'sale' => new SaleResource($sale->fresh()->load(['items', 'customer', 'user', 'branch'])),
         ]);
     }
 

@@ -17,7 +17,7 @@ class CustomerController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = Customer::where('business_id', $request->user()->business_id);
+        $query = Customer::where('business_id', $request->business()->id);
 
         if ($search = $request->query('search')) {
             $query->where(function ($q) use ($search) {
@@ -43,7 +43,7 @@ class CustomerController extends Controller
     {
         $customer = Customer::create([
             ...$request->validated(),
-            'business_id' => $request->user()->business_id,
+            'business_id' => $request->business()->id,
         ]);
 
         return response()->json([

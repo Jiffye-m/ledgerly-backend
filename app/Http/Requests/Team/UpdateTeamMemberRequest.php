@@ -15,10 +15,12 @@ class UpdateTeamMemberRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'name' => ['sometimes', 'required', 'string', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:20'],
             'role' => ['sometimes', Rule::in(['admin', 'staff'])],
-            'is_active' => ['sometimes', 'boolean'],
+            'branch_id' => [
+                'nullable',
+                Rule::exists('branches', 'id')->where(fn ($q) => $q->where('business_id', $this->business()->id)),
+            ],
+            'status' => ['sometimes', Rule::in(['active', 'deactivated'])],
         ];
     }
 }

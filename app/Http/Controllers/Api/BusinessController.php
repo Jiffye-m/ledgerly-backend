@@ -8,30 +8,28 @@ use App\Http\Requests\Business\UpdateBusinessRequest;
 use App\Http\Requests\Settings\UpdateSettingsRequest;
 use App\Http\Resources\BusinessResource;
 use App\Models\Business;
+use App\Models\BusinessMember;
 use App\Models\Setting;
 use App\Models\Subscription;
-use Illuminate\Support\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 class BusinessController extends Controller
 {
     /**
-     * A logged-in user with no business yet creates one here. This is the
-     * screen right after signup in the onboarding flow.
+     * Creates a business owned by the logged-in user — who may already
+     * own others. There's no "only one business per account" check
+     * anymore; the limit (if any) belongs on the plan, not hard-coded
+     * here.
      */
     public function store(StoreBusinessRequest $request): JsonResponse
     {
         $user = $request->user();
 
-        if ($user->business_id) {
-            return response()->json([
-                'message' => 'You already belong to a business.',
-            ], 422);
-        }
-
         $business = Business::create([
+            'owner_user_id' => $user->id,
             'name' => $request->name,
             'slug' => $this->uniqueSlug($request->name),
             'email' => $request->email,
@@ -55,9 +53,12 @@ class BusinessController extends Controller
             'trial_ends_at' => Carbon::today()->addDays(14),
         ]);
 
-        $user->update([
+        BusinessMember::create([
             'business_id' => $business->id,
+            'user_id' => $user->id,
             'role' => 'owner',
+            'branch_id' => null,
+            'status' => 'active',
         ]);
 
         return response()->json([
@@ -65,32 +66,21 @@ class BusinessController extends Controller
         ], 201);
     }
 
+    /**
+     * The currently-selected business (resolved from the X-Business-Id
+     * header by the has.business middleware) — not "my one business"
+     * anymore, since there could be several.
+     */
     public function show(Request $request): JsonResponse
     {
-        $business = $request->user()->business()->with(['setting', 'subscription'])->first();
-
-        if (! $business) {
-            return response()->json(['message' => 'No business found.'], 404);
-        }
-
         return response()->json([
-            'business' => new BusinessResource($business),
+            'business' => new BusinessResource($request->business()->load(['setting', 'subscription'])),
         ]);
     }
 
     public function update(UpdateBusinessRequest $request): JsonResponse
     {
-        $user = $request->user();
-
-        if (! $user->business_id) {
-            return response()->json(['message' => 'No business found.'], 404);
-        }
-
-        if (! $user->isOwner()) {
-            return response()->json(['message' => 'Only the business owner can update this.'], 403);
-        }
-
-        $business = $user->business;
+        $business = $request->business();
         $business->update($request->validated());
 
         return response()->json([
@@ -105,17 +95,11 @@ class BusinessController extends Controller
      */
     public function updateSettings(UpdateSettingsRequest $request): JsonResponse
     {
-        $user = $request->user();
-
-        if (! $user->isOwner()) {
-            return response()->json(['message' => 'Only the business owner can update this.'], 403);
-        }
-
-        $setting = $user->business->setting;
-        $setting->update($request->validated());
+        $business = $request->business();
+        $business->setting->update($request->validated());
 
         return response()->json([
-            'business' => new BusinessResource($user->business->fresh(['setting', 'subscription'])),
+            'business' => new BusinessResource($business->fresh(['setting', 'subscription'])),
         ]);
     }
 

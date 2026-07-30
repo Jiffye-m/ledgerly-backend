@@ -21,8 +21,9 @@ class AuthController extends Controller
 
     /**
      * Create an account. No business yet — that comes after email
-     * verification (POST /api/business is itself gated on it), so the
-     * wizard can be its own screen.
+     * verification (POST /api/business is itself gated on it). A user
+     * account is independent of any business now, so nothing
+     * business-related is created here at all.
      */
     public function register(RegisterRequest $request): JsonResponse
     {
@@ -31,7 +32,6 @@ class AuthController extends Controller
             'email' => $request->email,
             'phone' => $request->phone,
             'password' => $request->password, // hashed automatically via the 'hashed' cast
-            'role' => 'owner',
         ]);
 
         $this->otpService->issue($user);
@@ -39,7 +39,7 @@ class AuthController extends Controller
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
-            'user' => new UserResource($user->load(['business.setting', 'business.subscription'])),
+            'user' => new UserResource($user),
             'token' => $token,
             'message' => "We've sent a 6-digit verification code to {$this->otpService->maskEmail($user->email)}.",
         ], 201);
@@ -64,7 +64,7 @@ class AuthController extends Controller
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
-            'user' => new UserResource($user->load(['business.setting', 'business.subscription'])),
+            'user' => new UserResource($user),
             'token' => $token,
         ]);
     }
@@ -72,7 +72,7 @@ class AuthController extends Controller
     public function me(Request $request): JsonResponse
     {
         return response()->json([
-            'user' => new UserResource($request->user()->load(['business.setting', 'business.subscription'])),
+            'user' => new UserResource($request->user()),
         ]);
     }
 
